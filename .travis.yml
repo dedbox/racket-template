@@ -1,56 +1,48 @@
 language: c
+sudo: false
+
+branches:
+  only:
+    - master
 
 env:
   global:
-    # Supply a global RACKET_DIR environment variable. This is where
-    # Racket will be installed. A good idea is to use ~/racket because
-    # that doesn't require sudo to install.
     - RACKET_DIR=~/racket
   matrix:
-    # Supply at least one RACKET_VERSION environment variable. This is
-    # used by the install-racket.sh script (run at before_install,
-    # below) to select the version of Racket to download and install.
-    #
-    # Supply more than one RACKET_VERSION (as in the example below) to
-    # create a Travis-CI build matrix to test against multiple Racket
-    # versions.
     - RACKET_VERSION=7.0
     - RACKET_VERSION=7.1
     - RACKET_VERSION=7.2
     - RACKET_VERSION=7.3
     - RACKET_VERSION=7.4
     - RACKET_VERSION=7.5
-    # "HEAD" is a daily snapshot built from the `master` branch.
-    # This is the main variant of Racket that uses its own runtime.
     - RACKET_VERSION=HEAD
-    # "HEADCS" is a daily snapshot built from the `master` branch.
-    # This is an experimental variant of Racket that uses Chez Scheme.
     - RACKET_VERSION=HEADCS
-    # "RELEASE" is a release candidate that updates only during the
-    # weeks before a new release. The final release candidate should
-    # remain available until the next release cycle. As a result, you
-    # may leave this in your .travis.yml all the time. See:
-    # <https://pre-release.racket-lang.org/>.
     - RACKET_VERSION=RELEASE
 
 matrix:
-  # You may want to test against certain versions of Racket, without
-  # having them count against the overall success/failure. For example
-  # here we include the development versions:
   allow_failures:
     - env: RACKET_VERSION=HEAD
     - env: RACKET_VERSION=HEADCS
     - env: RACKET_VERSION=RELEASE
-  # Fast finish: Overall build result is determined as soon as any of
-  # its rows have failed, or, all of its rows that aren't allowed to
-  # fail have succeeded.
   fast_finish: true
 
-install:
-  - bash <(curl https://raw.githubusercontent.com/greghendershott/travis-racket/master/install-racket.sh)
-  - export PATH="${RACKET_DIR}/bin:${PATH}" #install-racket.sh can't set for us
+before_install:
+  - git clone https://github.com/greghendershott/travis-racket.git ~/travis-racket
+  - cat ~/travis-racket/install-racket.sh | bash
+  - export PATH="${RACKET_DIR}/bin:${PATH}"
 
+install:
+  - raco pkg install --auto $TRAVIS_BUILD_DIR
+
+before_script:
+
+# Here supply steps such as raco make, raco test, etc.  You can run
+# `raco pkg install --deps search-auto` to install any required
+# packages without it getting stuck on a confirmation prompt.
 script:
-  - raco pkg install --deps search-auto
-  - raco setup -D --check-pkg-deps template
-  - raco test -x -p template
+  - raco test -c template
+
+after_success:
+ - raco setup --check-pkg-deps -p template
+ - raco pkg install --deps search-auto cover cover-coveralls
+ - raco cover -b -f coveralls -d $TRAVIS_BUILD_DIR/coverage .
