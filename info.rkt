@@ -2,5 +2,5 @@
 
 (define collection "template")
 (define deps '("base"))
-(define build-deps '("scribble-lib"))
+(define build-deps '("racket-doc" "rackunit-lib" "sandbox-lib" "scribble-lib"))
 (define scribblings '(("scribblings/template.scrbl")))
