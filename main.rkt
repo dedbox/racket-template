@@ -35,7 +35,7 @@
           (for/fold ([str str])
                     ([x (in-list vars)]
                      [a (in-list vals)])
-            (string-replace str x (if (string? a) a (~a (syntax-e a))))))]
+            (string-replace str x (if (string? a) a (~a (syntax->datum a))))))]
   #:with (form* ...) (map resolve-template (attribute form))
   (begin form* ...))
 
@@ -46,10 +46,10 @@
         [(_ val (... ...))
          #:with (var* (... ...)) #'(var ...)
          (datum->syntax stx `(begin-template
-                               ,(for/list ([x (in-syntax #'(var* (... ...)))]
-                                           [a (in-syntax #'(val (... ...)))])
-                                  `[,x ,a])
-                               form ...))]))))
+                                 ,(for/list ([x (in-syntax #'(var* (... ...)))]
+                                             [a (in-syntax #'(val (... ...)))])
+                                    `[,x ,a])
+                               form ...))])))
 
 (define-simple-macro (define-template (name:id var:id ...) form ...)
   (define-syntax name (template (var ...) form ...)))
@@ -62,8 +62,9 @@
 
 (define-simple-macro (for/template ([var:id seq] ...) form ...)
   #:with (tpl ...) (map (curry replace-context this-syntax)
-                        (syntax-local-eval #'(for/list ([var seq] ...)
-                                               #`(begin-template ([var #,var] ...) form ...))))
+                        (syntax-local-eval
+                         #'(for/list ([var seq] ...)
+                             #`(begin-template ([var #,var] ...) form ...))))
   (begin tpl ...))
 
 (define-simple-macro (define-template-ids set-id:id member-id:id ...)
