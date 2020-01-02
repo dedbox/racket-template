@@ -9,7 +9,8 @@
                      racket/string
                      racket/syntax
                      syntax/parse/define
-                     syntax/strip-context))
+                     syntax/strip-context)
+         (for-meta 2 racket/base))
 
 (provide (all-defined-out)
          (for-syntax (all-defined-out)))
@@ -50,6 +51,8 @@
                                              [a (in-syntax #'(val (... ...)))])
                                     `[,x ,a])
                                form ...))])))
+
+  (define-syntax untemplate (make-rename-transformer #'unsyntax)))
 
 (define-simple-macro (define-template (name:id var:id ...) form ...)
   (define-syntax name (template (var ...) form ...)))
