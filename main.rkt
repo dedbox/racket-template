@@ -132,13 +132,6 @@
 (define-for-syntax (in-template-ids stx)
   (in-syntax (syntax-local-value stx)))
 
-;; (define-template (power $base $exponent)
-;;   (if-template (zero? $exponent)
-;;                1
-;;                `(* $base ,(power $base (untemplate (sub1 $exponent))))))
-
-;; (power 2 3)
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; The #lang
 
@@ -205,4 +198,12 @@
       (define $x $a0))
     (check = A  0)
     (check = B 10)
-    (check = C 20)))
+    (check = C 20))
+
+  (test-case "untemplate"
+    (define-template (power $b $p)
+      (if-template (zero? $p) 1 (* $b (power $b (untemplate (sub1 $p))))))
+    (define-template (power* $b $p)
+      (if-template (zero? $p) 1 `(* $b ,(power* $b (untemplate (sub1 $p))))))
+    (check = (power 2 3) 8)
+    (check equal? (power* 2 3) '(* 2 (* 2 (* 2 1))))))
