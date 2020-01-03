@@ -25,8 +25,6 @@
 
 @;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-@section{API Reference}
-
 As a convention, and for the reader's convenience, template variable names are
 denoted with a leading `@racketid[$]'. The @racketmodname[template] API
 imposes no such restriction on the names of template variables.
