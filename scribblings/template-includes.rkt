@@ -18,7 +18,3 @@
 
 (define-syntax-rule (example expr ...)
   (examples #:eval template-evaluator #:label #f expr ...))
-
-(void (example #:hidden (require template
-                                 (for-syntax racket/base
-                                             racket/sequence))))
