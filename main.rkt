@@ -5,18 +5,26 @@
          (for-syntax racket/base
                      racket/format
                      racket/function
+                     racket/list
                      racket/sequence
                      racket/string
                      racket/syntax
                      syntax/parse/define
                      syntax/strip-context)
-         (for-meta 2 racket/base))
+         (for-meta 2 racket/base
+                   syntax/strip-context))
 
 (provide (all-defined-out)
          (for-syntax template templates in-template-ids))
 
 (define-syntax (untemplate stx)
-  (raise-syntax-error #f "illegal outside of template" stx))
+  (raise-syntax-error #f "illegal outside of template forms" stx))
+
+(define-syntax (untemplate-splicing stx)
+  (raise-syntax-error #f "illegal outside of template forms" stx))
+
+(define-for-syntax ((expand-and-recontext ctx) stx)
+  (replace-context ctx (local-expand stx 'top-level (list #'quote))))
 
 (begin-for-syntax
   (define-simple-macro (templates [(var:id ...) form ...] ...)
@@ -25,12 +33,9 @@
         [(_ val (... ...))
          #:when (= (length (attribute val))
                    (length (syntax->list #'(var ...))))
-         #:with (var* (... ...)) #'(var ...)
-         (datum->syntax stx `(begin-template
-                                 ,(for/list ([x (in-syntax #'(var* (... ...)))]
-                                             [a (in-syntax #'(val (... ...)))])
-                                    `[,x ,a])
-                               form ...))]
+         #:with (var* (... ...)) (map syntax-local-introduce (syntax->list #'(var ...)))
+         #:with (form* (... ...)) (map syntax-local-introduce (syntax->list #'(form ...)))
+         #'(begin-template ([var* val] (... ...)) form* (... ...))]
         ...)))
 
   (define-simple-macro (template (var:id ...) form ...)
@@ -43,15 +48,53 @@
     (if (identifier? stx) (symbol->string (syntax-e stx)) stx))
 
   (define (string->id ctx str)
-    (datum->syntax ctx (read (open-input-string str))))
+    (datum->syntax ctx (read (open-input-string str)) ctx ctx))
 
   (define (resolve-template stx)
     (syntax-parse stx
       [:id (resolve-id stx)]
-      [((~literal untemplate) expr)
-       (datum->syntax stx (syntax-local-eval (resolve-template #'expr)))]
-      [(a ...) (datum->syntax stx (map resolve-template (attribute a)))]
+      [((~literal quasisyntax) expr)
+       #:with expr* (resolve-quasi-template (attribute expr))
+       (define ctx (attribute expr))
+       (datum->syntax ctx (syntax-e #'#`expr*) ctx ctx)]
+      [((~or (~literal unsyntax)
+             (~literal untemplate)) expr)
+       (template-local-eval (attribute expr) (attribute expr))]
+      [(a ...)
+       #:with ((a* ...) ...)
+       (for/list ([a-stx (in-list (attribute a))])
+         (syntax-parse (resolve-template a-stx)
+           [((~or (~literal unsyntax-splicing)
+                  (~literal untemplate-splicing)) expr)
+            (syntax-e (template-local-eval (attribute expr) (attribute expr)))]
+           [a** (list (attribute a**))]))
+       (datum->syntax stx (flatten (attribute a*)) stx stx)]
       [_ stx]))
+
+  (define (resolve-quasi-template stx)
+    (syntax-parse stx
+      [:id (resolve-id stx)]
+      [((~literal unsyntax) expr)
+       #:with expr* (resolve-template (attribute expr))
+       (define ctx (attribute expr))
+       (datum->syntax ctx (syntax-e #'#,expr*) ctx ctx)]
+      [((~literal untemplate) expr)
+       (template-local-eval (attribute expr) (attribute expr))]
+      [(a ...)
+       #:with ((a* ...) ...)
+       (for/list ([a-stx (in-list (attribute a))])
+         (syntax-parse (resolve-template a-stx)
+           [((~literal unsyntax-splicing) expr)
+            #:with expr* (resolve-template (attribute expr))
+            #'#,@expr*]
+           [((~literal untemplate-splicing) expr)
+            (syntax-e (template-local-eval (attribute expr) (attribute expr)))]
+           [a** (list (attribute a**))]))
+       (datum->syntax stx (flatten (attribute a*)) stx stx)]
+      [_ stx]))
+
+  (define (template-local-eval ctx stx)
+    (datum->syntax ctx (syntax-local-eval (resolve-template stx)) ctx ctx))
 
   (define (resolve-id stx)
     (define str (id->string stx))
@@ -66,19 +109,21 @@
                [a (in-list (current-vals))])
       (string-replace str x (if (string? a) a (~a (syntax->datum a)))))))
 
-(define-simple-macro (begin-template ([var:id val] ...) form ...)
-  #:with (form* ...) (parameterize
-                         ([current-vars (map id->string (attribute var))]
-                          [current-vals (map id->string (attribute val))])
-                       (map resolve-template (attribute form)))
-  (begin form* ...))
+(define-syntax-parser begin-template
+  [(_ ([var:id val] ...) form ...)
+   #:with (form* ...) (parameterize
+                          ([current-vars (map id->string (attribute var))]
+                           [current-vals (map id->string (attribute val))])
+                        (map resolve-template (attribute form)))
+   #`(begin form* ...)])
 
-(define-simple-macro (begin0-template ([var:id val] ...) expr ...)
-  #:with (expr* ...) (parameterize
-                         ([current-vars (map id->string (attribute var))]
-                          [current-vals (map id->string (attribute val))])
-                       (map resolve-template (attribute expr)))
-  (begin0 expr* ...))
+(define-syntax-parser begin0-template
+  [(_ ([var:id val] ...) form ...)
+   #:with (form* ...) (parameterize
+                          ([current-vars (map id->string (attribute var))]
+                           [current-vals (map id->string (attribute val))])
+                        (map resolve-template (attribute form)))
+   #`(begin0 form* ...)])
 
 (define-simple-macro (define-template (name:id var:id ...) form ...)
   (define-syntax name (template (var ...) form ...)))
@@ -96,7 +141,9 @@
   (splicing-letrec-syntax ([name (template (var ...) form ...)] ...) body ...))
 
 (define-simple-macro (if-template test pass fail)
-  (let-syntax ([go (if test (λ _ #`pass) (λ _ #`fail))]) (go)))
+  #:with stx this-syntax
+  (let-syntax ([go (λ _ ((expand-and-recontext #'stx) (if test #`pass #`fail)))])
+    (go)))
 
 (define-simple-macro (cond-template [(~and test (~not (~literal else))) pass ...]
                                     ...
@@ -112,52 +159,62 @@
 (define-simple-macro (unless-template test body ...)
   (let-syntax ([go (if test (λ _ #'(void)) (λ _ #'(begin body ...)))]) (go)))
 
+(begin-for-syntax
+  (define (iterate iter-stx vars seqs forms)
+    (with-syntax ([iter iter-stx]
+                  [(var ...) vars]
+                  [(seq ...) seqs]
+                  [(form ...) forms])
+      (syntax-local-eval
+       #'(iter ([var seq] ...)
+           #`(begin-template ([var #,var] ...) form ...))))))
+
 (define-simple-macro (for/template ([var:id seq] ...) form ...)
-  #:with (tpl ...) (map (curry replace-context this-syntax)
-                        (syntax-local-eval
-                         #'(for/list ([var seq] ...)
-                             #`(begin-template ([var #,var] ...) form ...))))
-  (begin tpl ...))
+  #:with ((_ form* ...) ...) (map (expand-and-recontext this-syntax)
+                                  (iterate #'for/list
+                                           (attribute var)
+                                           (attribute seq)
+                                           (attribute form)))
+  (begin (~@ form* ...) ...))
 
 (define-simple-macro (for*/template ([var:id seq] ...) form ...)
-  #:with (tpl ...) (map (curry replace-context this-syntax)
-                        (syntax-local-eval
-                         #'(for*/list ([var seq] ...)
-                             #`(begin-template ([var #,var] ...) form ...))))
-  (begin tpl ...))
+  #:with ((_ form* ...) ...) (map (expand-and-recontext this-syntax)
+                                  (iterate #'for*/list
+                                           (attribute var)
+                                           (attribute seq)
+                                           (attribute form)))
+  (begin (~@ form* ...) ...))
 
 (define-simple-macro (define-template-ids set-id:id member-id:id ...)
   (define-syntax set-id #'(member-id ...)))
 
-(define-for-syntax (in-template-ids stx)
-  (in-syntax (syntax-local-value stx)))
+(begin-for-syntax
+  (define-simple-macro (in-template-ids set-id:id)
+    (in-syntax (syntax-local-value #'set-id))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; The #lang
 
-;; (require racket/base
-;;          (for-syntax racket/base))
+(require racket/base)
 
-;; (provide (except-out (all-from-out racket/base) y#%module-begin)
-;; (for-syntax (all-from-out racket/base)) (rename-out [template-module-begin
-;; #%module-begin]))
+(provide (except-out (all-from-out racket/base) #%module-begin)
+         (rename-out [template-module-begin #%module-begin])
+         (for-syntax (all-from-out racket/base)))
 
-;; (module reader syntax/module-reader template)
+(module reader syntax/module-reader template)
 
-;; (define-simple-macro
-;;   (template-module-begin lang:id (~optional (~seq #:vars (var:id ...))) form ...)
-;;   #:with (x ...) (or (attribute var) #'())
-;;   #:with (arg ...) (generate-temporaries #'(x ...))
-;;   #:with instantiate (datum->syntax this-syntax 'instantiate)
-;;   (#%module-begin
-;;    (define-syntax-parser instantiate
-;;      [(_ arg ...)
-;;       #:with (y (... ...)) #'(x ...)
-;;       #:with (a (... ...)) #'(arg ...)
-;;       #:with mod-name #`#,(gensym 'template)
-;;       #'(begin-template ([y a] (... ...))
-;;           (module mod-name lang form ...)
-;;           (require 'mod-name))])))
+(define-simple-macro (template-module-begin (var:id ...) form ...)
+  #:with the-template (datum->syntax this-syntax 'the-template this-syntax)
+  (#%module-begin
+   (require template (for-syntax racket/base syntax/strip-context))
+   (provide the-template)
+   (define-syntax (the-template stx)
+     (define stx* ((syntax-local-eval #'(template (var ...) form ...)) stx))
+     ((expand-and-recontext stx) stx*))))
+
+(define-simple-macro (load-template-module name:id mod-path)
+  #:with the-template (datum->syntax this-syntax 'the-template this-syntax)
+  (local-require (rename-in mod-path [the-template name])))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Unit Tests
@@ -165,6 +222,34 @@
 (module+ test
   (require rackunit
            syntax/macro-testing)
+
+  (test-case "untemplate"
+    (define-template (power $b $p)
+      (if-template (zero? $p) 1 (* $b (power $b (untemplate (sub1 $p))))))
+    (define-template (power* $b $p)
+      (if-template (zero? $p) 1 `(* $b ,(power* $b (untemplate (sub1 $p))))))
+    (check = (power 2 3) 8)
+    (check equal? (power* 2 3) '(* 2 (* 2 (* 2 1)))))
+
+  (test-case "untemplate-splicing"
+    (define stx (begin-template () #`(1 (untemplate-splicing '(#,#'2 #,#'3)))))
+    (check equal? (syntax->datum stx) '(1 2 3)))
+
+  (test-case "unsyntax outside quasisyntax"
+    (let-syntax ([x #'(+ 2 3)])
+      (check = (begin-template () (+ 1 #,(syntax-local-value #'x))) 6)))
+
+  (test-case "unsyntax inside quasisyntax"
+    (check equal? (syntax->datum (begin-template () #`(+ 1 #,#'(+ 2 3)))) '(+ 1 (+ 2 3))))
+
+  (test-case "unsyntax-splicing outside quasisyntax"
+    (check = (begin-template () (+ 1 #,@(list #'2 #'3))) 6))
+
+  (test-case "templates"
+    (define-syntax tpl (templates [() 0] [($x) $x0] [($x $y) $x00$y00]))
+    (check = (tpl) 0)
+    (check = (tpl 1) 10)
+    (check = (tpl 1 2) 100200))
 
   (test-case "template"
     (define-syntax tpl (template ($x $y) '($x$y $y$x $xy $yx)))
@@ -175,6 +260,16 @@
     (check-exn exn:fail:syntax? (λ () (convert-syntax-error (tpl a))))
     (tpl a)
     (check equal? as '(a a a)))
+
+  (test-case "begin-template form"
+    (begin-template ([$x 1] [$y 2]) (define x $x0$y0))
+    (check = x 1020))
+
+  (test-case "begin-template expr"
+    (check = (begin-template ([$x 1] [$y 3]) 123 $x0$y0) 1030))
+
+  (test-case "begin0-template"
+    (check = (begin0-template ([$x 1] [$y 4]) $x0$y0 123) 1040))
 
   (test-case "define-template"
     (define-template (tpl $x) (define $xs '($x $x $x $x)))
@@ -188,9 +283,57 @@
              (append (foo a b) (bar c d)))
            '(ab ba cy dx)))
 
+  (test-case "letrec-template"
+    (check-exn exn:fail:syntax?
+               (λ ()
+                 (convert-compile-time-error
+                  (let-template ([(evn $b) #t]
+                                 [(odd $b) (not (evn $b))])
+                    (odd 123)))))
+    (letrec-template
+        ([(is-even? $n) (if-template (zero? $n) #t (is-odd? (untemplate (sub1 $n))))]
+         [(is-odd? $n) (not (is-even? $n))])
+      (check-false (is-even? 11))
+      (check-true (is-even? 10))))
+
   (test-case "splicing-let-template"
     (splicing-let-template ([(tpl $x) (define $xs '($x $x $x $x $x))]) (tpl a))
     (check equal? as '(a a a a a)))
+
+  (test-case "splicing-letrec-template"
+    (splicing-letrec-template
+        ([(is-even? $n) (if-template (zero? $n) #t (is-odd? (untemplate (sub1 $n))))]
+         [(is-odd? $n) (not (is-even? $n))])
+      (define is-11-even? (is-even? 11))
+      (define is-10-even? (is-even? 10)))
+    (check-false is-11-even?)
+    (check-true is-10-even?))
+
+  (test-case "if-template"
+    (define-template (tpl $b) (if-template $b 1 0))
+    (check = (tpl #t) 1)
+    (check = (tpl #f) 0))
+
+  (test-case "cond-template"
+    (define-template (tpl $a)
+      (cond-template [(number? $a) 'N]
+                     [(boolean? $a) 'B]
+                     [(string? $a) 'S]
+                     [else '?]))
+    (check eq? (tpl 123) 'N)
+    (check eq? (tpl "\"x\"") 'S)
+    (check eq? (tpl #f) 'B)
+    (check eq? (tpl '()) '?))
+
+  (test-case "when-template"
+    (define-template (tpl $b) (when-template $b 1))
+    (check-pred void? (tpl #f))
+    (check = (tpl #t) 1))
+
+  (test-case "unless-template"
+    (define-template (tpl $b) (unless-template $b 0))
+    (check-pred void? (tpl #t))
+    (check = (tpl #f) 0))
 
   (test-case "for/template"
     (for/template ([$x (in-syntax #'(A B C))]
@@ -200,10 +343,14 @@
     (check = B 10)
     (check = C 20))
 
-  (test-case "untemplate"
-    (define-template (power $b $p)
-      (if-template (zero? $p) 1 (* $b (power $b (untemplate (sub1 $p))))))
-    (define-template (power* $b $p)
-      (if-template (zero? $p) 1 `(* $b ,(power* $b (untemplate (sub1 $p))))))
-    (check = (power 2 3) 8)
-    (check equal? (power* 2 3) '(* 2 (* 2 (* 2 1))))))
+  (test-case "for*/template"
+    (for*/template ([$x (in-syntax #'(A B C))]
+                    [$y (in-range 3)])
+      (define $x$y (add1 $y)))
+    (check equal? (list A0 A1 A2 B0 B1 B2 C0 C1 C2) '(1 2 3 1 2 3 1 2 3)))
+
+  (test-case "identifier sets"
+    (define-template-ids ops + - * /)
+    (for/template ([$op (in-template-ids ops)]
+                   [$want (in-list '(6 -4 6 1/6))])
+      (check-true (= ($op 1 2 3) $want)))))

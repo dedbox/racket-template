@@ -9,13 +9,13 @@
   @for-label[
     racket/base
     racket/sequence
-    template
+    (except-in template #%module-begin)
   ]
 ]
 
 @example[#:hidden
   @require[
-    template
+    (except-in template #%module-begin)
     @for-syntax[
       racket/base
       racket/sequence
@@ -25,22 +25,30 @@
 
 @;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-As a convention, and for the reader's convenience, template variable names are
-denoted with a leading `@racketid[$]'. The @racketmodname[template] API
-imposes no such restriction on the names of template variables.
-
 @defmodule[template]
+
+By convention, template variable names are denoted with a leading
+`@racketid[$]'. The @racketmodname[template] API imposes no such restriction
+on the names of template variables.
+
+@; -----------------------------------------------------------------------------
+
+@section{Construction}
 
 @defform[(template (var-id ...) form ...)]{
 
-  Produces a @rtech{syntax transformer} that accepts one argument per
+  Produces a @rtech{syntax transformer} whose uses accept one argument per
   @var[var-id] and then substitutes them into the @var[form]s.
 
   Example:
   @example[
-    (define-syntax operate (template ($op) ($op 2 3 4)))
-    (operate +)
-    (operate *)
+    (define-syntax iterate-with
+      (template ($for)
+        ($for/list ([x (in-range 3)]
+                    [y (in-range 3)])
+          (+ y (* x 3)))))
+    (iterate-with for)
+    (iterate-with for*)
   ]
 }
 
@@ -55,10 +63,11 @@ imposes no such restriction on the names of template variables.
 
   Example:
   @example[
-    (define-syntax f (templates
-                       [() 'ten]
-                       [($x) '$x]
-                       [($x $y) '$y$x]))
+    (define-syntax f
+      (templates
+        [() 0]
+        [($x) '$x]
+        [($x $y) '$x-$y]))
     (list (f) (f one) (f one two))
   ]
 
@@ -67,15 +76,53 @@ imposes no such restriction on the names of template variables.
   ]
 }
 
-@defform[(untemplate expr)]{
+@deftogether[(
+@defform[(untemplate expr)]
+@defform[(untemplate-splicing expr)]
+)]{
 
   Escapes from an expanding template and replaces itself with the result of
-  @racket[expr], an expression at @rtech{phase level} 1 relative to the
-  surrounding context.
+  the expanded @racket[expr], an expression at @rtech{phase level} 1 relative
+  to the surrounding context.
+
+  Examples:
+  @example[
+    (let-syntax ([x #'(+ 2 3)])
+      (begin-template ()
+        (+ 1 (untemplate (syntax-local-value #'x)))))
+    (begin-template () '(1 (untemplate-splicing '(2 3))))
+  ]
+
+  As a notational convenience, @racket[unsyntax] / @racket[unsyntax-splicing]
+  forms occurring inside a template and outside a @racket[quasisyntax] are
+  aliased to @racket[untemplate] / @racket[untemplate-splicing].
+
+  Example:
+  @example[#:escape UNSYNTAX
+    (let-syntax ([x #'(+ 2 3)])
+      (begin-template ()
+        (+ 1 #,(syntax-local-value #'x))))
+    (begin-template () '(1 #,@'(2 3)))
+  ]
+}
+
+@; -----------------------------------------------------------------------------
+
+@section{Binding Forms}
+
+@defform[(define-template (id var-id ...) form ...)]{
+
+  Creates a @rtech{transformer} binding of @var[id] to @racket[(template
+  (var-id ...) form ...)].
 
   Example:
   @example[
-    (begin-template () (+ 1 (untemplate #'2)))
+    (define-template (iterate-with $for)
+      ($for/list ([x (in-range 3)]
+                  [y (in-range 3)])
+        (+ y (* 3 x))))
+    (iterate-with for)
+    (iterate-with for*)
   ]
 }
 
@@ -89,8 +136,8 @@ imposes no such restriction on the names of template variables.
   Example:
   @example[
     (let-template ([(fwd $x $y) '$x$y]
-                   [(bwd $x $y) '(fwd $y$x)])
-      (list (fwd a b) (bwd a b)))
+                   [(rev $x $y) '$y$x])
+      (list (fwd a b) (rev a b)))
   ]
 }
 
@@ -99,6 +146,13 @@ imposes no such restriction on the names of template variables.
   Like @racket[let-template], except that each @var[var-id] is also bound
   within all remaining @var[form]s.
 
+  Example:
+  @example[#:escape UNSYNTAX
+    (letrec-template
+        ([(is-even? $n) (if-template (zero? $n) #t (is-odd? #,(sub1 $n)))]
+         [(is-odd? $n) (not (is-even? $n))])
+      (list (is-even? 10) (is-even? 11)))
+  ]
 }
 
 @deftogether[(
@@ -110,12 +164,77 @@ imposes no such restriction on the names of template variables.
   definition context, the @var[body]s are spliced into the enclosing
   definition context (in the same way as for @racket[begin-template]).
 
-  Example:
+  Examples:
   @example[
     (splicing-let-template ([(one) 1])
       (define o (one)))
     o
     (eval:error (one))
+  ]
+
+  @example[#:escape UNSYNTAX
+    (splicing-letrec-template
+        ([(is-even? $n) (if-template (zero? $n) #t (is-odd? #,(sub1 $n)))]
+         [(is-odd? $n) (not (is-even? $n))])
+      (define is-11-even? (is-even? 11))
+      (define is-10-even? (is-even? 10)))
+    (list is-11-even? is-10-even?)
+  ]
+}
+
+@; -----------------------------------------------------------------------------
+
+@section{Sequence, Selection, Iteration}
+
+@defform*[((begin-template ([var-id val-id] ...) form ...)
+           (begin-template ([var-id val-id] ...) expr ...))]{
+
+  Substitutes occurrences of @var[var-id]s with corresponding @var[val-id]s
+  inside the @rtech{identifiers} in the @var[form]s or @var[expr]s comprising
+  its body.
+
+  The first form applies when @racket[begin-template] appears at the top
+  level, at module level, or in an internal-definition position (before any
+  expression in the internal-definition sequence). In that case, the
+  @racket[begin-template] form is equivalent to splicing the expanded
+  @var[form]s into the enclosing context.
+
+  The second form applies for @racket[begin-template] in an expression
+  position. In that case, the expanded @var[expr]s take its place.
+
+  Examples:
+  @example[
+    (begin-template ([$x a] [$y b])
+      (define ($x-$y? obj)
+        (equal? obj '($x $y))))
+    (a-b? '(a b))
+    (a-b? '(c d))
+  ]
+
+  @example[
+    (list (begin-template ([$x a]) '$x)
+          (begin-template ([$x b]) '$x))
+  ]
+
+  Non-identifier literals may also be created via substitution.
+
+  Example:
+  @example[
+    (begin-template ([$x #f] [$y 2])
+      (list (not $x) (+ $y0 1)))
+  ]
+}
+
+@defform[(begin0-template ([var-id val-id] ...) expr ...)]{
+
+  Like @racket[begin-template], except the results of the first @var[expr] are
+  the results of the @racket[begin0-template] form.
+
+  Example:
+  @example[
+    (begin0-template ([$x a] [$y b])
+      (values '$x '$y)
+      (displayln 'hi))
   ]
 }
 
@@ -168,75 +287,6 @@ imposes no such restriction on the names of template variables.
           [(positive? -5) (error "doesn't get here")]
           [(syntax-local-value #'x) (error "doesn't get here, either")]
           [(syntax-local-value #'y) 'here])))
-  ]
-}
-
-@defform[(define-template (id var-id ...) form ...)]{
-
-  Creates a @rtech{transformer} binding of @var[id] to @racket[(template
-  (var-id ...) form ...)].
-
-  Example:
-  @example[
-    (define-template (iterate-with $for)
-      ($for/list ([x (in-range 3)]
-                  [y (in-range 3)])
-        (+ y (* 3 x))))
-    (iterate-with for)
-    (iterate-with for*)
-  ]
-}
-
-@defform*[((begin-template ([var-id val-id] ...) form ...)
-           (begin-template ([var-id val-id] ...) expr ...))]{
-
-  Substitutes occurrences of @var[var-id]s with corresponding @var[val-id]s
-  inside the @rtech{identifiers} in the @var[form]s or @var[expr]s comprising
-  its body.
-
-  The first form applies when @racket[begin-template] appears at the top
-  level, at module level, or in an internal-definition position (before any
-  expression in the internal-definition sequence). In that case, the
-  @racket[begin-template] form is equivalent to splicing the expanded
-  @var[form]s into the enclosing context.
-
-  The second form applies for @racket[begin-template] in an expression
-  position. In that case, the expanded @var[expr]s take its place.
-
-  Examples:
-  @example[
-    (begin-template ([$x a] [$y b])
-      (define ($x-$y? obj)
-        (equal? obj '($x $y))))
-    (a-b? '(a b))
-    (a-b? '(c d))
-  ]
-
-  @example[
-    (let-values ([(x y) (begin-template ([$x a] [$y b])
-                          (values '$x '$y))])
-      (list x y))
-  ]
-
-  Non-identifier literals may also be created via substitution.
-
-  Example:
-  @example[
-    (begin-template ([$x #f] [$y 2])
-      (list (not $x) (+ $y0 1)))
-  ]
-}
-
-@defform[(begin0-template ([var-id val-id] ...) expr ...)]{
-
-  Like @racket[begin-template], except the results of the first @var[expr] are
-  the results of the @racket[begin0-template] form.
-
-  Example:
-  @example[
-    (begin0-template ([$x a] [$y b])
-      (values '$x '$y)
-      (displayln 'hi))
   ]
 }
 
@@ -301,6 +351,10 @@ imposes no such restriction on the names of template variables.
   ]
 }
 
+@; -----------------------------------------------------------------------------
+
+@section{Identifier Sequences}
+
 @defform[(define-template-ids id member-id ...)]{
 
   Defines @var[id] as a list of @rtech{identifiers} for use with
@@ -308,7 +362,9 @@ imposes no such restriction on the names of template variables.
 
 }
 
-@defproc[(in-template-ids [id identifier?]) sequence?]{
+@; @defproc[(in-template-ids [id identifier?]) sequence?]{
+
+@defform[(in-template-ids id)]{
 
   Produces a sequence whose elements are the successive identifiers bound to
   @var[id] by @racket[define-template-ids].
@@ -316,8 +372,48 @@ imposes no such restriction on the names of template variables.
   Example:
   @example[
     (define-template-ids operators + - * /)
-    (for/template ([$op (in-template-ids #'operators)])
+    (for/template ([$op (in-template-ids operators)])
       (displayln ($op 2 3)))
+  ]
+}
+
+@; -----------------------------------------------------------------------------
+
+@section{Modules}
+
+In @racketcommentfont{template/lang-test.rkt}:
+
+@codeblock|{
+  #lang template ($x)
+
+  (define $xs '($x $x $x))
+}|
+
+@defform[(#%module-begin (var-id ...) form ...)]{
+
+  Exports a binding of @var[the-template] to @racket[(template (var-id ...)
+  form ...)].
+
+  Example:
+  @example[
+    (module my-template-mod template
+      ($x)
+      (define $xs '($x $x $x $x)))
+    (require 'my-template-mod)
+    (the-template a)
+    as
+  ]
+}
+
+@defform[(load-template-module id mod-path)]{
+
+  Binds @var[id] to the template macro provided by @var[mod-path].
+
+  Example:
+  @example[
+    (load-template-module tpl template/lang-test)
+    (tpl b)
+    bs
   ]
 }
 
