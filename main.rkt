@@ -71,6 +71,20 @@
            [((~or (~literal unsyntax-splicing)
                   (~literal untemplate-splicing)) expr)
             (syntax-e (template-local-eval (attribute expr) (attribute expr)))]
+           [((~literal for/template) ([var:id seq] ...) expr ...)
+            #:with ((_ expr* ...) ...) (map (expand-and-recontext stx)
+                                            (iterate #'for/list
+                                                     (attribute var)
+                                                     (attribute seq)
+                                                     (attribute expr)))
+            (syntax->list #'((begin expr* ...) ...))]
+           [((~literal for*/template) ([var:id seq] ...) expr ...)
+            #:with ((_ expr* ...) ...) (map (expand-and-recontext stx)
+                                            (iterate #'for*/list
+                                                     (attribute var)
+                                                     (attribute seq)
+                                                     (attribute expr)))
+            (syntax->list #'((begin expr* ...) ...))]
            [a** (list (attribute a**))]))
        (datum->syntax stx (flatten (attribute a*)) stx stx)]
       [_ stx]))
