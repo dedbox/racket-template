@@ -56,6 +56,7 @@
   (define (resolve-template stx)
     (syntax-parse stx
       [:id (resolve-id stx)]
+      [:string (resolve-string stx)]
       [((~literal quasisyntax) expr)
        #:with expr* (resolve-quasi-template (attribute expr))
        (define ctx (attribute expr))
@@ -77,6 +78,7 @@
   (define (resolve-quasi-template stx)
     (syntax-parse stx
       [:id (resolve-id stx)]
+      [:string (resolve-string stx)]
       [((~literal unsyntax) expr)
        #:with expr* (resolve-template (attribute expr))
        (define ctx (attribute expr))
@@ -102,6 +104,12 @@
   (define (resolve-id stx)
     (define str (syntax->string stx))
     (if (has-template-vars? str) (string->syntax stx (resolve-vars str)) stx))
+
+  (define (resolve-string stx)
+    (define str (syntax-e stx))
+    (if (has-template-vars? str)
+        (datum->syntax stx (resolve-vars str) stx stx)
+        stx))
 
   (define (has-template-vars? str)
     (for/or ([x (in-list (current-vars))]) (string-contains? str x)))
@@ -263,6 +271,11 @@
     (check-exn exn:fail:syntax? (λ () (convert-syntax-error (tpl a))))
     (tpl a)
     (check equal? as '(a a a)))
+
+  (test-case "string template"
+    (check equal?
+           (begin-template ([$x 1] [$y 2] [$z !]) '($x-$y$z "$y-$x$z"))
+           '(1-2! "2-1!")))
 
   (test-case "begin-template form"
     (begin-template ([$x 1] [$y 2]) (define x $x0$y0))
