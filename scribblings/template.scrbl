@@ -8,6 +8,8 @@
 @require[
   @for-label[
     racket/base
+    racket/contract
+    racket/function
     racket/sequence
     (except-in template #%module-begin)
   ]
@@ -15,6 +17,8 @@
 
 @example[#:hidden
   @require[
+    racket/contract
+    racket/function
     (except-in template #%module-begin)
     @for-syntax[
       racket/base
@@ -27,9 +31,109 @@
 
 @defmodule[template]
 
-By convention, template variable names are denoted with a leading
-`@racketid[$]'. The @racketmodname[template] API imposes no such restriction
-on the names of template variables.
+@section{Overview}
+
+A @deftech{template macro} is a form of @gtech{pattern-based macro} with two
+new behaviors:
+
+@itemlist[#:style 'ordered
+
+  @item{Variable substitution occurs @emph{within every identifier} and
+  @emph{at the character level}.}
+
+  @item{Code may be generated @emph{iteratively or recursively} during
+  expansion of the template body.}
+
+]
+
+@subsection{Fine-Grained Variable Substitution}
+
+@tech{Template macros} can generate many identifiers from a common base.
+
+@example[
+  (code:comment "A bjiective composition is a pair of functions that invert")
+  (code:comment "each other when composed.")
+  (define-template (define-bijective-composition $T1 $E1 $T2 $E2)
+    (define/contract $T1->$T2 (-> $T1? $T2?) $E2)
+    (define/contract $T2->$T1 (-> $T2? $T1?) $E1))
+  (define-bijective-composition
+    real (compose read open-input-string)
+    string (curry format "~a"))
+  (string->real (real->string 123))
+  (real->string (string->real "987"))
+  (eval:error (string->real -1))
+]
+
+Conceptually, @tech{template macro} variable substitution occurs @emph{before}
+macro expansion. To avoid altering or introducing lexical scope,
+@tech{template macros} selectively alter the input text, enabling the
+infiltration of @racket[quote]d forms and literal data.
+
+@example[
+  (begin-template ([$x 1] [$y 2] [$z !])
+    (writeln (sub1 $x000$y000))
+    (writeln '($x-$y$z "$y-$x$z")))
+]
+
+@subsection{Higher-Order Templates}
+
+@tech{Template macros} can be define iteratively.
+
+@example[
+  (code:comment "a 10x10 identity matrix")
+  (begin-template ()
+    (list (for/template ([$row (in-range 10)])
+            (vector (for/template ([$col (in-range 10)])
+                      (if-template (= $row $col) 1 0))))))
+]
+
+@tech{Template macros} can also ``escape'' to the next higher phase during
+expansion.
+
+@example[
+  (define-template (slow-fibonaccis $n)
+    (if-template (< $n 2)
+      (build-list $n (λ _ 1))
+      (let ([fibs (slow-fibonaccis (untemplate (sub1 $n)))])
+        (cons (+ (car fibs) (cadr fibs)) fibs))))
+]
+
+@example[
+  (define-template (fast-fibonaccis $n)
+    (if-template (<= $n 2)
+      '(untemplate (build-list $n (λ _ 1)))
+      '(untemplate (for/fold ([fibs '(1 1)])
+                             ([_ (in-range (- $n 2))])
+                     (cons (+ (car fibs) (cadr fibs)) fibs)))))
+  (fast-fibonaccis 20)
+]
+
+As a notational convenience, @racket[unsyntax] and @racket[unsyntax-splicing]
+are aliased to @racket[untemplate] and @racket[untemplate-splicing],
+respectively, when they occur inside a template but outside a
+@racket[quasisyntax].
+
+@example[#:escape UNSYNTAX
+(define-template (small-fast-fibonaccis $n)
+  (if-template (<= $n 2)
+    '#,(build-list $n (λ _ 1))
+    '#,(for/fold ([fibs '(1 1)])
+                 ([_ (in-range (- $n 2))])
+         (cons (+ (car fibs) (cadr fibs)) fibs))))
+  (small-fast-fibonaccis 20)
+]
+
+@subsection{The `@racketid[$]'-Prefix Convention}
+
+Throughout this manual, the names of @tech{template macro} variables start
+with a `@racketid[$]'. Although the @racketmodname[template] API imposes no
+such restriction on the names of template variables, poorly-chosen variable
+names can lead to strange compile-time errors.
+
+@example[
+  (eval:error (begin-template ([e X]) (define e 123)))
+  (eval:error (begin-template ([e X]) '(define e 123)))
+]
 
 @; -----------------------------------------------------------------------------
 
@@ -325,9 +429,9 @@ on the names of template variables.
 
 @defform[(for/template ([var-id seq-expr] ...) body ...)]{
 
-  Iteratively evaluates a template macro. The @racket[seq-expr]s are evaluated
-  left-to-right at phase 1, and each must produce a @rtech{sequence} whose
-  elements are syntax objects or primitive values.
+  Iteratively evaluates a @tech{template macro}. The @racket[seq-expr]s are
+  evaluated left-to-right at phase 1, and each must produce a @rtech{sequence}
+  whose elements are syntax objects or primitive values.
 
   Example:
   @example[
@@ -336,18 +440,35 @@ on the names of template variables.
       (define $x (add1 $n)))
     (list A B C)
   ]
+
+  Using @racket[for/template] in an @rtech{expression context} inside a
+  template is equivalent to splicing the expanded @var[body]s into the
+  enclosing context.
+
+  Example:
+  @example[
+    (begin-template ()
+      (list (for/template ([$n (in-range 9)]) $n)))
+  ]
 }
 
 @defform[(for*/template ([var-id seq-expr] ...) body ...)]{
 
   Like @racket[for/template], but with all of its sequence iterations nested.
 
-  Example:
+  Examples:
   @example[
     (for*/template ([$x (in-syntax #'(A B C))]
                     [$n (in-range 3)])
       (define $x$n (add1 $n)))
     (list A0 A1 A2 B0 B1 B2 C0 C1 C2)
+  ]
+
+  @example[
+    (begin-template ()
+      (list (for*/template ([$m (in-range 3)]
+                            [$n (in-range 3)])
+              (+ $n (* $m 3)))))
   ]
 }
 
@@ -407,7 +528,7 @@ In @racketcommentfont{template/lang-test.rkt}:
 
 @defform[(load-template-module id mod-path)]{
 
-  Binds @var[id] to the template macro provided by @var[mod-path].
+  Binds @var[id] to the @tech{template macro} provided by @var[mod-path].
 
   Example:
   @example[
