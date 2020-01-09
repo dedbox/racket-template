@@ -44,10 +44,13 @@
   (define current-vars (make-parameter #f))
   (define current-vals (make-parameter #f))
 
-  (define (id->string stx)
-    (if (identifier? stx) (symbol->string (syntax-e stx)) stx))
+  (define (syntax->string stx)
+    (syntax-parse stx
+      [:id (~a (syntax->datum stx))]
+      [(a ...) (~a "(" (string-join (map syntax->string (attribute a))) ")")]
+      [_ (~v (syntax->datum stx))]))
 
-  (define (string->id ctx str)
+  (define (string->syntax ctx str)
     (datum->syntax ctx (read (open-input-string str)) ctx ctx))
 
   (define (resolve-template stx)
@@ -97,8 +100,8 @@
     (datum->syntax ctx (syntax-local-eval (resolve-template stx)) ctx ctx))
 
   (define (resolve-id stx)
-    (define str (id->string stx))
-    (if (has-template-vars? str) (string->id stx (resolve-vars str)) stx))
+    (define str (syntax->string stx))
+    (if (has-template-vars? str) (string->syntax stx (resolve-vars str)) stx))
 
   (define (has-template-vars? str)
     (for/or ([x (in-list (current-vars))]) (string-contains? str x)))
@@ -107,21 +110,21 @@
     (for/fold ([str str])
               ([x (in-list (current-vars))]
                [a (in-list (current-vals))])
-      (string-replace str x (if (string? a) a (~a (syntax->datum a)))))))
+      (string-replace str x a))))
 
 (define-syntax-parser begin-template
   [(_ ([var:id val] ...) form ...)
    #:with (form* ...) (parameterize
-                          ([current-vars (map id->string (attribute var))]
-                           [current-vals (map id->string (attribute val))])
+                          ([current-vars (map syntax->string (attribute var))]
+                           [current-vals (map syntax->string (attribute val))])
                         (map resolve-template (attribute form)))
    #`(begin form* ...)])
 
 (define-syntax-parser begin0-template
   [(_ ([var:id val] ...) form ...)
    #:with (form* ...) (parameterize
-                          ([current-vars (map id->string (attribute var))]
-                           [current-vals (map id->string (attribute val))])
+                          ([current-vars (map syntax->string (attribute var))]
+                           [current-vals (map syntax->string (attribute val))])
                         (map resolve-template (attribute form)))
    #`(begin0 form* ...)])
 
