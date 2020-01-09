@@ -9,6 +9,9 @@
 (define (rtech . args)
   (apply tech #:doc '(lib "scribblings/reference/reference.scrbl") args))
 
+(define (gtech . args)
+  (apply tech #:doc '(lib "scribblings/guide/guide.scrbl") args))
+
 (define template-evaluator
   (call-with-trusted-sandbox-configuration
    (λ ()
