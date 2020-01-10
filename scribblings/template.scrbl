@@ -128,12 +128,12 @@ respectively, when they occur inside a template but outside a
 @racket[quasisyntax].
 
 @example[#:escape UNSYNTAX
-(define-template (small-fast-fibonaccis $n)
-  (if-template (<= $n 2)
-    '#,(build-list $n (λ _ 1))
-    '#,(for/fold ([fibs '(1 1)])
-                 ([_ (in-range (- $n 2))])
-         (cons (+ (car fibs) (cadr fibs)) fibs))))
+  (define-template (small-fast-fibonaccis $n)
+    (if-template (<= $n 2)
+      '#,(build-list $n (λ _ 1))
+      '#,(for/fold ([fibs '(1 1)])
+                   ([_ (in-range (- $n 2))])
+           (cons (+ (car fibs) (cadr fibs)) fibs))))
   (small-fast-fibonaccis 20)
 ]
 
