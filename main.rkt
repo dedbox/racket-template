@@ -254,11 +254,13 @@
     (define-template (power* $b $p)
       (if-template (zero? $p) 1 `(* $b ,(power* $b (untemplate (sub1 $p))))))
     (check = (power 2 3) 8)
-    (check equal? (power* 2 3) '(* 2 (* 2 (* 2 1)))))
+    (check equal? (power* 2 3) '(* 2 (* 2 (* 2 1))))
+    (check-exn exn:fail:syntax? (λ () (convert-syntax-error (untemplate 123)))))
 
   (test-case "untemplate-splicing"
     (define stx (begin-template () #`(1 (untemplate-splicing '(#,#'2 #,#'3)))))
-    (check equal? (syntax->datum stx) '(1 2 3)))
+    (check equal? (syntax->datum stx) '(1 2 3))
+    (check-exn exn:fail:syntax? (λ () (convert-syntax-error (untemplate-splicing 123)))))
 
   (test-case "unsyntax outside quasisyntax"
     (let-syntax ([x #'(+ 2 3)])
@@ -269,6 +271,14 @@
 
   (test-case "unsyntax-splicing outside quasisyntax"
     (check = (begin-template () (+ 1 #,@(list #'2 #'3))) 6))
+
+  (test-case "quasisyntax"
+    (check eq? (syntax->datum (begin-template ([$x a]) #`$x)) 'a)
+    (check string=? (syntax->datum (begin-template ([$x a]) #`"$x $x $x")) "a a a")
+    (check eq? (syntax->datum (begin-template ([$x a]) #`#,'$x)) 'a)
+    (check eq? (syntax->datum (begin-template ([$x a]) #`(untemplate '$x))) 'a)
+    (check equal? (syntax->datum (begin-template ([$x a]) #`($x $x $x))) '(a a a))
+    (check = (syntax->datum (begin-template ([$x 1]) #`10)) 10))
 
   (test-case "templates"
     (define-syntax tpl (templates [() 0] [($x) $x0] [($x $y) $x00$y00]))
@@ -371,13 +381,21 @@
       (define $x $a0))
     (check = A  0)
     (check = B 10)
-    (check = C 20))
+    (check = C 20)
+    (check equal? (begin-template () (list (for/template ([$m (in-range 3)]
+                                                          [$n (in-range 3)])
+                                             (+ $n (* $m 3)))))
+           '(0 4 8)))
 
   (test-case "for*/template"
     (for*/template ([$x (in-syntax #'(A B C))]
                     [$y (in-range 3)])
       (define $x$y (add1 $y)))
-    (check equal? (list A0 A1 A2 B0 B1 B2 C0 C1 C2) '(1 2 3 1 2 3 1 2 3)))
+    (check equal? (list A0 A1 A2 B0 B1 B2 C0 C1 C2) '(1 2 3 1 2 3 1 2 3))
+    (check equal? (begin-template () (list (for*/template ([$m (in-range 3)]
+                                                           [$n (in-range 3)])
+                                             (+ $n (* $m 3)))))
+           '(0 1 2 3 4 5 6 7 8)))
 
   (test-case "identifier sets"
     (define-template-ids ops + - * /)
