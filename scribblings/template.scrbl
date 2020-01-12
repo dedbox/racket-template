@@ -25,6 +25,7 @@
     racket/contract
     racket/function
     racket/sequence
+    racket/syntax
     (except-in template #%module-begin)
   ]
 ]
@@ -47,20 +48,20 @@
 
 @section{Overview}
 
-A @deftech{template macro} is a form of @gtech{pattern-based macro} with two
-new behaviors:
+@deftech{Template macros} are smilar to @gtech{pattern-based macros}, but with
+two major differences:
 
 @itemlist[#:style 'ordered
 
-  @item{Variable substitution occurs @emph{within every identifier} and
-  @emph{at the character level}.}
+  @item{Variable resolution occurs @emph{within every identifier} and @emph{at
+  the character level}.}
 
   @item{Code may be generated @emph{iteratively or recursively} during
-  expansion of the template body.}
+  expansion of the @tech{template} body.}
 
 ]
 
-@subsection{Fine-Grained Variable Substitution}
+@subsection{Fine-Grained Variable Resolution}
 
 @tech{Template macros} can generate many identifiers from a common base.
 
@@ -78,22 +79,22 @@ new behaviors:
   (eval:error (string->real -1))
 ]
 
-Conceptually, @tech{template macro} variable substitution occurs @emph{before}
-macro expansion. To avoid altering or introducing lexical scope,
-@tech{template macros} selectively alter the input text, enabling the
-infiltration of @racket[quote]d forms and literal data.
+Conceptually, @tech{template macro} variables are resolved @emph{before} macro
+expansion. To avoid altering or introducing lexical scope, @tech{template
+macros} selectively alter the input text, enabling the infiltration of
+@racket[quote]d forms and other literal data.
 
 @example[
   (begin-template ([$x 1] [$y 2] [$z !])
-    (writeln (sub1 $x000$y000))
+    (writeln (sub1 $x$y00))
     (writeln '($x-$y$z "$y-$x$z")))
 ]
 
-@subsection{Higher-Order Templates}
+@subsection{Expansion-Driven Template Generation}
 
-@tech{Template macros} can be define iteratively.
+@tech{Template macros} can be defined iteratively.
 
-@example[
+@racketblock[
   (code:comment "a 10x10 identity matrix")
   (begin-template ()
     (list (for/template ([$row (in-range 10)])
@@ -101,16 +102,55 @@ infiltration of @racket[quote]d forms and literal data.
                       (if-template (= $row $col) 1 0))))))
 ]
 
-@tech{Template macros} can also ``escape'' to the next higher phase during
-expansion.
+The @deftech{template}, or @tech{template macro} body, above expands into an
+expression that produces a list of vectors.
+
+@racketblock[
+  (list (vector 1 0 0 0 0 0 0 0 0 0)
+        (vector 0 1 0 0 0 0 0 0 0 0)
+        (vector 0 0 1 0 0 0 0 0 0 0)
+        (vector 0 0 0 1 0 0 0 0 0 0)
+        (vector 0 0 0 0 1 0 0 0 0 0)
+        (vector 0 0 0 0 0 1 0 0 0 0)
+        (vector 0 0 0 0 0 0 1 0 0 0)
+        (vector 0 0 0 0 0 0 0 1 0 0)
+        (vector 0 0 0 0 0 0 0 0 1 0)
+        (vector 0 0 0 0 0 0 0 0 0 1))
+]
+
+@tech{Template macros} can also escape to the expanding environment. The
+@racket[untemplate] and @racket[untemplate-splicing] forms evaluate an
+expression with @racket[syntax-local-eval] and then inject the caller's
+lexical context into any non-syntax return values. @tech{Template macro}
+variables are still visible inside these forms.
 
 @example[
   (define-template (slow-fibonaccis $n)
-    (if-template (< $n 2)
+    (if-template (<= $n 2)
       (build-list $n (λ _ 1))
       (let ([fibs (slow-fibonaccis (untemplate (sub1 $n)))])
         (cons (+ (car fibs) (cadr fibs)) fibs))))
 ]
+
+When @racketid[$n] is, say 5, @racket[slow-fibonaccis] first expands to
+
+@racketblock[
+  (let ([fibs (slow-fibonaccis 4)])
+    (cons (+ (car fibs) (cadr fibs)) fibs))
+]
+
+The fully expanded @tech{template} is
+
+@racketblock[
+  (let ([fibs (let ([fibs (let ([fibs (build-list 2 (λ _ 1))])
+                            (cons (+ (car fibs) (cadr fibs)) fibs))])
+                (cons (+ (car fibs) (cadr fibs)) fibs))])
+    (cons (+ (car fibs) (cadr fibs)) fibs))
+]
+
+The code above runs quickly, but recursively generating and expanding every
+branch takes a while. The @racket[fast-fibonaccis] function below improves
+performance by calculating the whole series in one expansion step.
 
 @example[
   (define-template (fast-fibonaccis $n)
@@ -122,10 +162,11 @@ expansion.
   (fast-fibonaccis 20)
 ]
 
-As a notational convenience, @racket[unsyntax] and @racket[unsyntax-splicing]
-are aliased to @racket[untemplate] and @racket[untemplate-splicing],
-respectively, when they occur inside a template but outside a
-@racket[quasisyntax].
+Inside a @tech{template}, @racket[unsyntax] and @racket[unsyntax-splicing] are
+aliases for @racket[untemplate] and @racket[untemplate-splicing],
+respectively, when they occur outside @racket[quasisyntax]. In the code below,
+for example, @racket[small-fast-fibonacis] is equivalent to
+@racket[fast-fibonaccis].
 
 @example[#:escape UNSYNTAX
   (define-template (small-fast-fibonaccis $n)
@@ -141,8 +182,8 @@ respectively, when they occur inside a template but outside a
 
 Throughout this manual, the names of @tech{template macro} variables start
 with a `@racketid[$]'. Although the @racketmodname[template] API imposes no
-such restriction on the names of template variables, poorly-chosen variable
-names can lead to strange compile-time errors.
+such restriction on the names of @tech{template macro} variables,
+poorly-chosen variable names can lead to strange compile-time errors.
 
 @example[
   (eval:error (begin-template ([e X]) (define e 123)))
@@ -200,8 +241,10 @@ names can lead to strange compile-time errors.
 )]{
 
   Escapes from an expanding template and replaces itself with the result of
-  the expanded @racket[expr], an expression at @rtech{phase level} 1 relative
-  to the surrounding context.
+  @racket[expr], an expression at @rtech{phase level} 1 relative to the
+  surrounding context. Any result that is not a @rtech{syntax object} is
+  converted to one with the caller's lexical context, source location, and
+  syntax properties.
 
   Examples:
   @example[
@@ -304,10 +347,10 @@ names can lead to strange compile-time errors.
 
 @section{Sequence, Selection, Iteration}
 
-@defform*[((begin-template ([var-id val-id] ...) form ...)
-           (begin-template ([var-id val-id] ...) expr ...))]{
+@defform*[((begin-template ([var-id val-expr] ...) form ...)
+           (begin-template ([var-id val-expr] ...) expr ...))]{
 
-  Substitutes occurrences of @var[var-id]s with corresponding @var[val-id]s
+  Substitutes occurrences of @var[var-id]s with corresponding @var[val-expr]s
   inside the @rtech{identifiers} in the @var[form]s or @var[expr]s comprising
   its body.
 
@@ -343,7 +386,7 @@ names can lead to strange compile-time errors.
   ]
 }
 
-@defform[(begin0-template ([var-id val-id] ...) expr ...)]{
+@defform[(begin0-template ([var-id val-expr] ...) expr ...)]{
 
   Like @racket[begin-template], except the results of the first @var[expr] are
   the results of the @racket[begin0-template] form.
