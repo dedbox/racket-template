@@ -5,16 +5,15 @@
 [![Build Status](https://travis-ci.org/dedbox/racket-template.svg?branch=master)](https://travis-ci.org/dedbox/racket-template)
 [![Coverage Status](https://coveralls.io/repos/github/dedbox/racket-template/badge.svg?branch=master)](https://coveralls.io/github/dedbox/racket-template?branch=master)
 
-## Dead Simple Racket Code Generation
+## Dead Simple Code Generation for Racket
 
-Template macros tame the flexibility of [template
+Template macros combine the flexibility of [template
 meta-programming](https://en.wikipedia.org/wiki/Template_metaprogramming) with
 the safety of Racket's hygienic macro system.
 
-Template variables are resolved *before* expansion by rewriting the input text
-of identifiers or strings that contain template variables. The extra
-flexibility makes escaping to the expanding environment less necessary *and*
-more convenient.
+Template variables are resolved *before* expansion by selectively rewriting
+the input text. The extra flexibility makes escaping to the expanding
+environment less necessary *and* more convenient.
 
 ``` racket
 > (define-template (define-fibonaccis $max-n)
@@ -56,6 +55,11 @@ To start using template macros, import the `template` collection.
 ``` racket
 (require template)
 ```
+
+See the [official documentation](https://docs.racket-lang.org/template/) for a
+detailed overview of template macros, along with the complete catalog of
+template constructors and combinators provided by the
+[template](https://pkgs.racket-lang.org/package/template) package.
 
 ## Contributing
 
