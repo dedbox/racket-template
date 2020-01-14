@@ -165,8 +165,7 @@ performance by calculating the whole series in one expansion step.
 Inside a @tech{template}, @racket[unsyntax] and @racket[unsyntax-splicing] are
 aliases for @racket[untemplate] and @racket[untemplate-splicing],
 respectively, when they occur outside @racket[quasisyntax]. In the code below,
-for example, @racket[small-fast-fibonacis] is equivalent to
-@racket[fast-fibonaccis].
+@racket[small-fast-fibonacis] behaves identically to @racket[fast-fibonaccis].
 
 @example[#:escape UNSYNTAX
   (define-template (small-fast-fibonaccis $n)
@@ -351,8 +350,7 @@ poorly-chosen variable names can lead to strange compile-time errors.
            (begin-template ([var-id val-expr] ...) expr ...))]{
 
   Substitutes occurrences of @var[var-id]s with corresponding @var[val-expr]s
-  inside the @rtech{identifiers} in the @var[form]s or @var[expr]s comprising
-  its body.
+  in the @var[form]s or @var[expr]s comprising its body.
 
   The first form applies when @racket[begin-template] appears at the top
   level, at module level, or in an internal-definition position (before any
@@ -377,7 +375,8 @@ poorly-chosen variable names can lead to strange compile-time errors.
           (begin-template ([$x b]) '$x))
   ]
 
-  Non-identifier literals may also be created via substitution.
+  Non-identifier literals may also be created via @tech{template macro}
+  variable resolution.
 
   Example:
   @example[
@@ -408,16 +407,12 @@ poorly-chosen variable names can lead to strange compile-time errors.
 
   Examples:
   @example[
-    (begin-template ()
-      (if-template (positive? -5) (error "doesn't get here") 2))
-    (begin-template ()
-      (if-template (positive? 5) 1 (error "doesn't get here")))
+    (if-template (positive? -5) (error "doesn't get here") 2)
+    (if-template (positive? 5) 1 (error "doesn't get here"))
     (let-syntax ([x 'we-have-no-bananas])
-      (begin-template ()
-        (if-template (syntax-local-value #'x) "yes" "no")))
+      (if-template (syntax-local-value #'x) "yes" "no"))
     (let-syntax ([x #f])
-      (begin-template ()
-        (if-template (syntax-local-value #'x) "yes" "no")))
+      (if-template (syntax-local-value #'x) "yes" "no"))
   ]
 }
 
@@ -440,14 +435,13 @@ poorly-chosen variable names can lead to strange compile-time errors.
 
   Examples:
   @example[
-    (begin-template () (cond-template))
-    (begin-template () (cond-template [else 5]))
-    (begin-template ()
-      (let-syntax ([x #f] [y #t])
-        (cond-template
-          [(positive? -5) (error "doesn't get here")]
-          [(syntax-local-value #'x) (error "doesn't get here, either")]
-          [(syntax-local-value #'y) 'here])))
+    (cond-template)
+    (cond-template [else 5])
+    (let-syntax ([x #f] [y #t])
+      (cond-template
+        [(positive? -5) (error "doesn't get here")]
+        [(syntax-local-value #'x) (error "doesn't get here, either")]
+        [(syntax-local-value #'y) 'here]))
   ]
 }
 
@@ -461,11 +455,10 @@ poorly-chosen variable names can lead to strange compile-time errors.
   Examples:
   @example[
     (let-syntax ([x #t])
-      (begin-template ()
-        (when-template (positive? -5) (displayln 'hi))
-        (when-template (syntax-local-value #'x)
-          (display 'hi)
-          (display 'there))))
+      (when-template (positive? -5) (displayln 'hi))
+      (when-template (syntax-local-value #'x)
+        (display '|hey |)
+        (display 'there)))
   ]
 }
 
@@ -476,19 +469,18 @@ poorly-chosen variable names can lead to strange compile-time errors.
   Examples:
   @example[
     (let-syntax ([x #f])
-      (begin-template ()
-        (unless-template (positive? 5) (displayln 'hi))
-        (unless-template (syntax-local-value #'x)
-          (display 'hi)
-          (display 'there))))
+      (unless-template (positive? 5) (displayln 'hi))
+      (unless-template (syntax-local-value #'x)
+        (display '|hey |)
+        (display 'there)))
   ]
 }
 
 @defform[(for/template ([var-id seq-expr] ...) body ...)]{
 
-  Iteratively evaluates a @tech{template macro}. The @racket[seq-expr]s are
-  evaluated left-to-right at phase 1, and each must produce a @rtech{sequence}
-  whose elements are syntax objects or primitive values.
+  Iteratively evaluates the @var[body]s. The @racket[seq-expr]s are evaluated
+  left-to-right at phase 1, and each must produce a @rtech{sequence} whose
+  elements are syntax objects or primitive values.
 
   Example:
   @example[
@@ -506,6 +498,15 @@ poorly-chosen variable names can lead to strange compile-time errors.
   @example[
     (begin-template ()
       (list (for/template ([$n (in-range 9)]) $n)))
+  ]
+
+  Splicing is only possible when @racket[for/template] occurs within another
+  template. When used outside an enclosing template, the results are wrapped
+  with @racket[begin].
+
+  Example:
+  @example[
+    (list (for/template ([$n (in-range 9)]) $n))
   ]
 }
 
@@ -567,6 +568,18 @@ In @racketcommentfont{template/lang-test.rkt}:
   (define $xs '($x $x $x))
 }|
 
+@defform[(load-template-module id mod-path)]{
+
+  Binds @var[id] to the @tech{template macro} provided by @var[mod-path].
+
+  Example:
+  @example[
+    (load-template-module tpl template/lang-test)
+    (tpl a)
+    as
+  ]
+}
+
 @defform[(#%module-begin (var-id ...) form ...)]{
 
   Exports a binding of @var[the-template] to @racket[(template (var-id ...)
@@ -578,19 +591,7 @@ In @racketcommentfont{template/lang-test.rkt}:
       ($x)
       (define $xs '($x $x $x $x)))
     (require 'my-template-mod)
-    (the-template a)
-    as
-  ]
-}
-
-@defform[(load-template-module id mod-path)]{
-
-  Binds @var[id] to the @tech{template macro} provided by @var[mod-path].
-
-  Example:
-  @example[
-    (load-template-module tpl template/lang-test)
-    (tpl b)
+    (the-template b)
     bs
   ]
 }
