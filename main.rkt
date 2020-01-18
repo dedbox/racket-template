@@ -70,7 +70,9 @@
   (define (resolve-template stx)
     (syntax-parse stx
       [:id (resolve-id stx)]
+      ;; [:keyword (resolve-keyword stx)]
       [:string (resolve-string stx)]
+      ;; [:bytes (resolve-bytes stx)]
       [((~literal quasisyntax) expr)
        #:with expr* (resolve-quasi-template (attribute expr))
        (define ctx (attribute expr))
@@ -106,7 +108,9 @@
   (define (resolve-quasi-template stx)
     (syntax-parse stx
       [:id (resolve-id stx)]
+      ;; [:keyword (resolve-keyword stx)]
       [:string (resolve-string stx)]
+      ;; [:bytes (resolve-bytes stx)]
       [((~literal unsyntax) expr)
        #:with expr* (resolve-template (attribute expr))
        (define ctx (attribute expr))

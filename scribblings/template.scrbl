@@ -49,132 +49,21 @@
 @section{Overview}
 
 @deftech{Template macros} are smilar to @gtech{pattern-based macros}, but with
-two major differences:
+four important differences:
 
-@itemlist[#:style 'ordered
+@itemlist[
 
-  @item{Variable resolution occurs @emph{within every identifier} and @emph{at
-  the character level}.}
+  @item{Variable are resolved @emph{within every internable datum} and
+  @emph{before non-template macros} are expanded.}
 
-  @item{Code may be generated @emph{iteratively or recursively} during
-  expansion of the @tech{template} body.}
+  @item{Code may be generated @emph{iteratively or recursively}, with less
+  escapes to the expanding environment.}
 
-]
+  @item{Variables are @emph{always in scope} regardless of position, quoting
+  depth, or escape status.}
 
-@subsection{Fine-Grained Variable Resolution}
+  @item{All generated code inherits @emph{the caller's} lexical context.}
 
-@tech{Template macros} can generate many identifiers from a common base.
-
-@example[
-  (code:comment "A bjiective composition is a pair of functions that invert")
-  (code:comment "each other when composed.")
-  (define-template (define-bijective-composition $T1 $E1 $T2 $E2)
-    (define/contract $T1->$T2 (-> $T1? $T2?) $E2)
-    (define/contract $T2->$T1 (-> $T2? $T1?) $E1))
-  (define-bijective-composition
-    real (compose read open-input-string)
-    string (curry format "~a"))
-  (string->real (real->string 123))
-  (real->string (string->real "987"))
-  (eval:error (string->real -1))
-]
-
-Conceptually, @tech{template macro} variables are resolved @emph{before} macro
-expansion. To avoid altering or introducing lexical scope, @tech{template
-macros} selectively alter the input text, enabling the infiltration of
-@racket[quote]d forms and other literal data.
-
-@example[
-  (begin-template ([$x 1] [$y 2] [$z !])
-    (writeln (sub1 $x$y00))
-    (writeln '($x-$y$z "$y-$x$z")))
-]
-
-@subsection{Expansion-Driven Template Generation}
-
-@tech{Template macros} can be defined iteratively.
-
-@racketblock[
-  (code:comment "a 10x10 identity matrix")
-  (begin-template ()
-    (list (for/template ([$row (in-range 10)])
-            (vector (for/template ([$col (in-range 10)])
-                      (if-template (= $row $col) 1 0))))))
-]
-
-The @deftech{template}, or @tech{template macro} body, above expands into an
-expression that produces a list of vectors.
-
-@racketblock[
-  (list (vector 1 0 0 0 0 0 0 0 0 0)
-        (vector 0 1 0 0 0 0 0 0 0 0)
-        (vector 0 0 1 0 0 0 0 0 0 0)
-        (vector 0 0 0 1 0 0 0 0 0 0)
-        (vector 0 0 0 0 1 0 0 0 0 0)
-        (vector 0 0 0 0 0 1 0 0 0 0)
-        (vector 0 0 0 0 0 0 1 0 0 0)
-        (vector 0 0 0 0 0 0 0 1 0 0)
-        (vector 0 0 0 0 0 0 0 0 1 0)
-        (vector 0 0 0 0 0 0 0 0 0 1))
-]
-
-@tech{Template macros} can also escape to the expanding environment. The
-@racket[untemplate] and @racket[untemplate-splicing] forms evaluate an
-expression with @racket[syntax-local-eval] and then inject the caller's
-lexical context into any non-syntax return values. @tech{Template macro}
-variables are still visible inside these forms.
-
-@example[
-  (define-template (slow-fibonaccis $n)
-    (if-template (<= $n 2)
-      (build-list $n (λ _ 1))
-      (let ([fibs (slow-fibonaccis (untemplate (sub1 $n)))])
-        (cons (+ (car fibs) (cadr fibs)) fibs))))
-]
-
-When @racketid[$n] is, say 5, @racket[slow-fibonaccis] first expands to
-
-@racketblock[
-  (let ([fibs (slow-fibonaccis 4)])
-    (cons (+ (car fibs) (cadr fibs)) fibs))
-]
-
-The fully expanded @tech{template} is
-
-@racketblock[
-  (let ([fibs (let ([fibs (let ([fibs (build-list 2 (λ _ 1))])
-                            (cons (+ (car fibs) (cadr fibs)) fibs))])
-                (cons (+ (car fibs) (cadr fibs)) fibs))])
-    (cons (+ (car fibs) (cadr fibs)) fibs))
-]
-
-The code above runs quickly, but recursively generating and expanding every
-branch takes a while. The @racket[fast-fibonaccis] function below improves
-performance by calculating the whole series in one expansion step.
-
-@example[
-  (define-template (fast-fibonaccis $n)
-    (if-template (<= $n 2)
-      '(untemplate (build-list $n (λ _ 1)))
-      '(untemplate (for/fold ([fibs '(1 1)])
-                             ([_ (in-range (- $n 2))])
-                     (cons (+ (car fibs) (cadr fibs)) fibs)))))
-  (fast-fibonaccis 20)
-]
-
-Inside a @tech{template}, @racket[unsyntax] and @racket[unsyntax-splicing] are
-aliases for @racket[untemplate] and @racket[untemplate-splicing],
-respectively, when they occur outside @racket[quasisyntax]. In the code below,
-@racket[small-fast-fibonacis] behaves identically to @racket[fast-fibonaccis].
-
-@example[#:escape UNSYNTAX
-  (define-template (small-fast-fibonaccis $n)
-    (if-template (<= $n 2)
-      '#,(build-list $n (λ _ 1))
-      '#,(for/fold ([fibs '(1 1)])
-                   ([_ (in-range (- $n 2))])
-           (cons (+ (car fibs) (cadr fibs)) fibs))))
-  (small-fast-fibonaccis 20)
 ]
 
 @subsection{The `@racketid[$]'-Prefix Convention}
