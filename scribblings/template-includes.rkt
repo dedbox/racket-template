@@ -34,4 +34,14 @@
        (make-base-eval #:lang 'racket/base '(void)))))) 
 
 (define-syntax-rule (example expr ...)
-  (examples #:eval template-evaluator #:label #f expr ...))
+  (examples #:eval template-evaluator
+            #:label #f
+            #:preserve-source-locations
+            expr ...))
+
+(define-syntax-rule (EXAMPLE expr ...)
+  (examples #:eval template-evaluator
+            #:escape UNSYNTAX
+            #:label #f
+            #:preserve-source-locations
+            expr ...))
