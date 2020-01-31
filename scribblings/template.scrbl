@@ -144,7 +144,6 @@ Examples:
   Examples:
   @example[
 (begin-template #`(untemplate 'here))
-(quote-template ([where there]) #`(untemplate #'where))
 (begin-template #`(untemplate (datum->syntax #f 'nowhere)))
   ]
 
@@ -216,8 +215,8 @@ Examples:
 
   Example:
   @example[
-(quote-template ([where there]) #`(untemplate #'where))
-(with-template ([where here]) #`(untemplate 'where))
+(quote-template ([$where there]) #`(untemplate #'$where))
+(with-template ([$where here]) #`(untemplate '$where))
   ]
 }
 
