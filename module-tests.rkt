@@ -31,7 +31,7 @@
     (the-template b)
     (check equal? bs '(b b b b b)))
 
-  (test-case "load-template-module"
-    (load-template-module tpl template/lang-test)
+  (test-case "load-module-template"
+    (load-module-template tpl template/lang-test)
     (tpl c)
     (check equal? cs '(c c c))))

@@ -49,15 +49,42 @@
 @section{Overview}
 
 @deftech{Template macros} are smilar to @gtech{pattern-based macros}, but with
-two important differences:
+four important differences:
 
 @itemlist[
 
-  @item{Variable are resolved @emph{within} every internable datum
-  @emph{before} macro @rtech{expansion}.}
+  @item{Variable are resolved @emph{within} every internable datum,
+  @emph{before} macro @rtech{expansion}, enabling the synthesis of
+  non-identifier literals.
 
-  @item{Variables are @emph{always} in scope regardless of position, quoting
-  depth, or escape status.}
+  @example[
+(with-template ([$x 3] [$y 2]) (add1 $x$y0))
+  ]}
+
+  @item{Templates can escape to the expanding environment.
+
+  @example[
+(let-syntax ([memo (list #'hello #'world)])
+  (begin-template '(#,@(syntax-local-value #'memo))))
+  ]}
+
+  @item{Variables are @emph{always} in scope, regardless of position, quoting
+  depth, or escape status.
+
+  @example[
+(with-template ([$STAR *] [$BARS ||])
+  (for$BARS/list ([x 3] [y 3])
+    (list x y (syntax->datum #`'(untemplate '$STAR)))))
+  ]}
+
+  @item{When most @seclink["Primitives"]{primitive},
+  @seclink["Constructors"]{constructor}, or @seclink["Combiners"]{combiner}
+  sub-templates generate multiple code fragments, the results are spliced in
+  place.
+
+  @example[
+(begin-template (list (for/template ([$k 10]) (add1 $k))))
+  ]}
 
 ]
 
@@ -67,15 +94,93 @@ Throughout this manual, names of @tech{template macro} variables start with a
 `@racketid[$]'. The @racketmodname[template] API imposes no such restriction
 on variable names.
 
-Beware, because @tech{template macro} variable resolution is finer-grained
-than ordinary variable resolution, poorly chosen variable names can lead to
-strange compile-time errors.
+Beware: @tech{template macro} variable resolution is finer-grained than
+ordinary variable resolution, so poorly chosen variable names can lead to
+bizarre syntax errors.
 
 Examples:
 @example[
 (eval:error (with-template ([e X]) (define e 123)))
 (eval:error (with-template ([e X]) 'e))
 ]
+
+@; -----------------------------------------------------------------------------
+
+@section{Primitives}
+
+@defform[(with-template ([var-id val-expr] ...) tpl ...)]{
+
+  Substitutes @var[var-id]s with @var[val-expr]s and expands sub-templates in
+  the @var[tpl]s, retaining the @rtech{lexical information}, source-location
+  information, and @rtech{syntax properties} of the originating template
+  source.
+
+  When a @racket[with-template] form appears at the top level, at module
+  level, or in an internal-definition position (before any expression in the
+  internal-definition sequence), it is equivalent to splicing the expanded
+  @var[tpl]s into the enclosing context.
+
+  Examples:
+  @example[
+(with-template ([$x a]
+                [$y b])
+  (define ($x-$y? obj)
+    (equal? obj '($x $y))))
+(a-b? '(a b))
+(a-b? '(c d))
+(list
+ (with-template ([$x a]) '$x)
+ (with-template ([$x b]) '$x))
+  ]
+}
+
+@defform[(quote-template ([var-id val-expr] ...) tpl ...)]{
+
+  Like @racket[with-template], except code generated with @tech{template
+  macro} variables inherit the @rtech{lexical information}, source-location
+  information, and @rtech{syntax properties} of the expression bound to the
+  first variable encountered.
+
+  When a @racket[quote-template] form appears at the top level, at module
+  level, or in an internal-definition position (before any expression in the
+  internal-definition sequence), it is equivalent to splicing the expanded
+  @var[tpl]s into the enclosing context.
+
+  Example:
+  @example[
+(quote-template ([$where there]) #`(untemplate #'$where))
+(with-template ([$where here]) #`(untemplate '$where))
+  ]
+}
+
+@defform[(unquote-template tpl ...)]{
+
+  Inside a @racket[quote-template] form, reverts to the variable resolution
+  semantics of @racket[with-template], ensuring any code generated with
+  @tech{template macro} variables retains the @rtech{lexical information},
+  source-location information, and @rtech{syntax properties} of the
+  originating template source.
+
+  Example:
+  @example[
+(quote-template ([$where here])
+  (list #`$where (unquote-template #`$where)))
+  ]
+
+  Inside a @seclink["Module_Templates"]{module template}, the default
+  @rtech{readtable} is extended so that @racketparenfont{#/} is a shorthand
+  for @racket[unquote-template].
+
+  For example,
+  @codeblock{
+#lang template () #`#/here
+  }
+
+  produces the same @rtech{read}-time datum as
+  @codeblock{
+#lang template () #`(unquote-template here)
+  }
+}
 
 @; -----------------------------------------------------------------------------
 
@@ -167,134 +272,9 @@ Examples:
 (begin-template #'#,no-escape)
   ]
 }
-
 @; -----------------------------------------------------------------------------
 
-@section{Binding Forms}
-
-@defform[(with-template ([var-id val-expr] ...) tpl ...)]{
-
-  Substitutes occurrences of @var[var-id]s with corresponding @var[val-expr]s
-  in the @var[tpl]s comprising its body, then replaces itself with the
-  results.
-
-  When a @racket[with-template] form appears at the top level, at module
-  level, or in an internal-definition position (before any expression in the
-  internal-definition sequence), it is equivalent to splicing the expanded
-  @var[tpl]s into the enclosing context.
-
-  Examples:
-  @example[
-(with-template ([$x a]
-                [$y b])
-  (define ($x-$y? obj)
-    (equal? obj '($x $y))))
-(a-b? '(a b))
-(a-b? '(c d))
-(list (with-template ([$x a]) '$x)
-      (with-template ([$x b]) '$x))
-  ]
-
-  Non-identifier literals may also be created via @tech{template macro}
-  variable resolution.
-
-  Example:
-  @example[
-(with-template ([$x #f]
-                [$y 2])
-  (list (not $x) (+ $y0 1)))
-  ]
-}
-
-@defform[(quote-template ([var-id val-expr] ...) tpl ...)]{
-
-  Like @racket[with-template], except code generated with @tech{template
-  macro} variables inherit the @rtech{lexical information}, source-location
-  information, and @rtech{syntax properties} of the expression bound to the
-  first variable encountered.
-
-  Example:
-  @example[
-(quote-template ([$where there]) #`(untemplate #'$where))
-(with-template ([$where here]) #`(untemplate '$where))
-  ]
-}
-
-@defform[(define-template (id var-id ...) tpl ...)]{
-
-  Creates a @rtech{transformer} binding of @var[id] to @racket[(template
-  (var-id ...) tpl ...)].
-
-  Example:
-  @example[
-(define-template (iterate-with $for)
-  ($for/list ([x (in-range 3)]
-              [y (in-range 3)])
-    (+ y (* 3 x))))
-(iterate-with for)
-(iterate-with for*)
-  ]
-}
-
-@defform[(let-template ([(id var-id ...) tpl ...] ...) body-tpl ...)]{
-
-  Creates a @rtech{transformer} binding of each @var[id] with
-  @racket[(template (var-id ...) tpl ...)], which is an expression at
-  @rtech{phase level} 1 relative to the surrounding context. Each @var[id] is
-  bound in the @var[body-tpl]s, and not in other @var[tpl]s.
-
-  Example:
-  @example[
-(let-template ([(fwd $x $y) '$x$y]
-               [(rev $x $y) '$y$x])
-  (list (fwd a b) (rev a b)))
-  ]
-}
-
-@defform[(letrec-template ([(id var-id ...) tpl ...] ...) body-tpl ...)]{
-
-  Like @racket[let-template], except that each @var[var-id] is also bound
-  within all remaining @var[tpl]s.
-
-  Example:
-  @EXAMPLE[
-(letrec-template
-    ([(is-even? $n) (if-template (zero? $n) #t (is-odd? #,(sub1 $n)))]
-     [(is-odd? $n) (not (is-even? $n))])
-  (list (is-even? 10) (is-even? 11)))
-  ]
-}
-
-@deftogether[(
-@defform[(splicing-let-template ([(id var-id ...) tpl ...] ...) body-tpl ...)]
-@defform[(splicing-letrec-template ([(id var-id ...) tpl ...] ...) body-tpl ...)]
-)]{
-
-  Like @racket[let-template] and @racket[letrec-template], except that in a
-  definition context, the @var[body-tpl]s are spliced into the enclosing
-  definition context (in the same way as for @racket[with-template]).
-
-  Examples:
-  @example[
-(splicing-let-template ([(one) 1])
-  (define o (one)))
-o
-(eval:error (one))
-  ]
-
-  @EXAMPLE[
-(splicing-letrec-template
-    ([(is-even? $n) (if-template (zero? $n) #t (is-odd? #,(sub1 $n)))]
-     [(is-odd? $n) (not (is-even? $n))])
-  (define is-11-even? (is-even? 11))
-  (define is-10-even? (is-even? 10)))
-(list is-11-even? is-10-even?)
-  ]
-}
-
-@; -----------------------------------------------------------------------------
-
-@section{Template Combiners}
+@section{Combiners}
 
 @defform[(begin-template tpl ...)]{
 
@@ -431,7 +411,7 @@ o
 
   Example:
   @example[
-(list (for/template ([$n (in-range 10)]) $n))
+(list (for/template ([$n 10]) (add1 $n)))
   ]
 }
 
@@ -442,11 +422,129 @@ o
   Examples:
   @example[
 (begin-template
-  (list (for*/template ([$m (in-range 3)]
-                        [$n (in-range 3)])
-          (+ $n (* $m 3)))))
+  (list
+    (for*/template ([$m (in-range 3)]
+                    [$n (in-range 3)])
+      (+ $n (* $m 3)))))
   ]
 }
+
+
+@; -----------------------------------------------------------------------------
+
+@section{Binding Forms}
+
+@defform[(define-template (id var-id ...) tpl ...)]{
+
+  Creates a @rtech{transformer} binding of @var[id] to @racket[(template
+  (var-id ...) tpl ...)].
+
+  Example:
+  @example[
+(define-template (iterate-with $for)
+  ($for/list ([x (in-range 3)]
+              [y (in-range 3)])
+    (+ y (* 3 x))))
+(iterate-with for)
+(iterate-with for*)
+  ]
+}
+
+@defform[(let-template ([(id var-id ...) tpl ...] ...) body-tpl ...)]{
+
+  Creates a @rtech{transformer} binding of each @var[id] with
+  @racket[(template (var-id ...) tpl ...)], which is an expression at
+  @rtech{phase level} 1 relative to the surrounding context. Each @var[id] is
+  bound in the @var[body-tpl]s, and not in other @var[tpl]s.
+
+  Example:
+  @example[
+(let-template ([(fwd $x $y) '$x$y]
+               [(rev $x $y) '$y$x])
+  (list (fwd a b) (rev a b)))
+  ]
+}
+
+@defform[(letrec-template ([(id var-id ...) tpl ...] ...) body-tpl ...)]{
+
+  Like @racket[let-template], except that each @var[var-id] is also bound
+  within all remaining @var[tpl]s.
+
+  Example:
+  @EXAMPLE[
+(letrec-template
+    ([(is-even? $n) (if-template (zero? $n) #t (is-odd? #,(sub1 $n)))]
+     [(is-odd? $n) (not (is-even? $n))])
+  (list (is-even? 10) (is-even? 11)))
+  ]
+}
+
+@deftogether[(
+@defform[(splicing-let-template ([(id var-id ...) tpl ...] ...) body-tpl ...)]
+@defform[(splicing-letrec-template ([(id var-id ...) tpl ...] ...) body-tpl ...)]
+)]{
+
+  Like @racket[let-template] and @racket[letrec-template], except that in a
+  definition context, the @var[body-tpl]s are spliced into the enclosing
+  definition context (in the same way as for @racket[with-template]).
+
+  Examples:
+  @example[
+(splicing-let-template ([(one) 1])
+  (define o (one)))
+o
+(eval:error (one))
+  ]
+
+  @EXAMPLE[
+(splicing-letrec-template
+    ([(is-even? $n) (if-template (zero? $n) #t (is-odd? #,(sub1 $n)))]
+     [(is-odd? $n) (not (is-even? $n))])
+  (define is-11-even? (is-even? 11))
+  (define is-10-even? (is-even? 10)))
+(list is-11-even? is-10-even?)
+  ]
+}
+@; -----------------------------------------------------------------------------
+
+@section{Module Templates}
+
+In @racketcommentfont{template/lang-test.rkt}:
+
+@codeblock|{
+#lang template ($x)
+
+(define $xs '($x $x $x))
+}|
+
+@defform[(load-module-template id mod-path)]{
+
+  Binds @var[id] to the @tech{template macro} provided by @var[mod-path].
+
+  Example:
+  @example[
+(load-module-template tpl template/lang-test)
+(tpl a)
+as
+  ]
+}
+
+@defform[(#%module-begin (var-id ...) tpl ...)]{
+
+  Exports a binding of @var[the-template] to @racket[(template (var-id ...)
+  tpl ...)].
+
+  Example:
+  @example[
+(module my-template-mod template
+  ($x)
+  (define $xs '($x $x $x $x)))
+(require 'my-template-mod)
+(the-template b)
+bs
+  ]
+}
+
 
 @; -----------------------------------------------------------------------------
 
@@ -469,46 +567,6 @@ o
 (define-template-ids operators + - * /)
 (for/template ([$op (in-template-ids operators)])
   (displayln ($op 2 3)))
-  ]
-}
-
-@; -----------------------------------------------------------------------------
-
-@section{Modules}
-
-In @racketcommentfont{template/lang-test.rkt}:
-
-@codeblock|{
-#lang template ($x)
-
-(define $xs '($x $x $x))
-}|
-
-@defform[(load-template-module id mod-path)]{
-
-  Binds @var[id] to the @tech{template macro} provided by @var[mod-path].
-
-  Example:
-  @example[
-(load-template-module tpl template/lang-test)
-(tpl a)
-as
-  ]
-}
-
-@defform[(#%module-begin (var-id ...) form ...)]{
-
-  Exports a binding of @var[the-template] to @racket[(template (var-id ...)
-  form ...)].
-
-  Example:
-  @example[
-(module my-template-mod template
-  ($x)
-  (define $xs '($x $x $x $x)))
-(require 'my-template-mod)
-(the-template b)
-bs
   ]
 }
 
