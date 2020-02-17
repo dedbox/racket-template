@@ -19,19 +19,23 @@
            template)
 
   (test-case "#lang template"
-    (local-require template/lang-test)
+    (local-require template/tests/lang-template)
     (the-template a)
     (check equal? as '(a a a)))
 
-  (module test-module-template template ($x)
+  (module test-module-template template/lang ($x)
     (define $xs '($x $x $x $x $x)))
 
-  (test-case "module template"
+  (local-require 'test-module-template)
+  (the-template b)
+  (check equal? bs '(b b b b b))
+
+  (test-case "module template/lang"
     (local-require 'test-module-template)
     (the-template b)
     (check equal? bs '(b b b b b)))
 
-  (test-case "load-module-template"
-    (load-module-template tpl template/lang-test)
+  (test-case "load-template"
+    (load-template tpl template/tests/lang-template)
     (tpl c)
     (check equal? cs '(c c c))))

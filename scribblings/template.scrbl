@@ -26,7 +26,7 @@
     racket/function
     racket/sequence
     racket/syntax
-    (except-in template #%module-begin)
+    template
   ]
 ]
 
@@ -34,7 +34,7 @@
   @require[
     racket/contract
     racket/function
-    (except-in template #%module-begin)
+    template
     @for-syntax[
       racket/base
       racket/sequence
@@ -53,9 +53,8 @@ four important differences:
 
 @itemlist[
 
-  @item{Variable are resolved @emph{within} every internable datum,
-  @emph{before} macro @rtech{expansion}, enabling the synthesis of
-  non-identifier literals.
+  @item{Template variables are resolved @emph{within} every internable datum
+  and can be combined to synthesize non-identifier literals.
 
   @example[
 (with-template ([$x 3] [$y 2]) (add1 $x$y0))
@@ -68,35 +67,31 @@ four important differences:
   (begin-template '(#,@(syntax-local-value #'memo))))
   ]}
 
-  @item{Variables are @emph{always} in scope, regardless of position, quoting
-  depth, or escape status.
-
-  @example[
-(with-template ([$STAR *] [$BARS ||])
-  (for$BARS/list ([x 3] [y 3])
-    (list x y (syntax->datum #`'(untemplate '$STAR)))))
-  ]}
-
-  @item{When most @seclink["Primitives"]{primitive},
-  @seclink["Constructors"]{constructor}, or @seclink["Combiners"]{combiner}
-  sub-templates generate multiple code fragments, the results are spliced in
-  place.
+  @item{Most templates become splicing forms when used inside other templates.
 
   @example[
 (begin-template (list (for/template ([$k 10]) (add1 $k))))
   ]}
 
+  @item{Template variables are @emph{always} in scope, regardless of
+  position, quoting depth, or escape level.
+
+  @example[
+(begin-template '((for/template ([$a 3]) #'"$a")))
+  ]
+  }
+
 ]
 
 @subsection{The `@racketid[$]' Convention}
 
-Throughout this manual, names of @tech{template macro} variables start with a
-`@racketid[$]'. The @racketmodname[template] API imposes no such restriction
-on variable names.
+Throughout this manual, the names of template variables start with a
+`@racketid[$]'. Although the @racketmodname[template] API imposes no such
+restriction on variable names, beware:
 
-Beware: @tech{template macro} variable resolution is finer-grained than
-ordinary variable resolution, so poorly chosen variable names can lead to
-bizarre syntax errors.
+@tech{Template macro} variable resolution is finer-grained than ordinary
+variable resolution. Poorly chosen variable names can lead to bizarre syntax
+errors.
 
 Examples:
 @example[
@@ -110,10 +105,18 @@ Examples:
 
 @defform[(with-template ([var-id val-expr] ...) tpl ...)]{
 
-  Substitutes @var[var-id]s with @var[val-expr]s and expands sub-templates in
-  the @var[tpl]s, retaining the @rtech{lexical information}, source-location
-  information, and @rtech{syntax properties} of the originating template
-  source.
+  Expands sub-templates in the @var[tpl]s, then substitutes @var[var-id]s with
+  @var[val-expr]s while retaining the @rtech{lexical information},
+  source-location information, and @rtech{syntax properties} of the
+  originating template source.
+
+  Example:
+  @example[
+(with-template ([$x a]
+                [$y b])
+  (define $xs '($x $x))
+  (displayln `($xs = ,$xs)))
+  ]
 
   When a @racket[with-template] form appears at the top level, at module
   level, or in an internal-definition position (before any expression in the
@@ -136,10 +139,11 @@ Examples:
 
 @defform[(quote-template ([var-id val-expr] ...) tpl ...)]{
 
-  Like @racket[with-template], except code generated with @tech{template
-  macro} variables inherit the @rtech{lexical information}, source-location
+  Like @racket[with-template], except sub-templates wrapped in @racket[syntax]
+  or @racket[quasisyntax] are not expanded, and code fragments generated from
+  template variables inherit the @rtech{lexical information}, source-location
   information, and @rtech{syntax properties} of the expression bound to the
-  first variable encountered.
+  first variable used.
 
   When a @racket[quote-template] form appears at the top level, at module
   level, or in an internal-definition position (before any expression in the
@@ -147,39 +151,9 @@ Examples:
   @var[tpl]s into the enclosing context.
 
   Example:
-  @example[
-(quote-template ([$where there]) #`(untemplate #'$where))
-(with-template ([$where here]) #`(untemplate '$where))
+  @EXAMPLE[
+(quote-template ([$where here]) #'(untemplate $where))
   ]
-}
-
-@defform[(unquote-template tpl ...)]{
-
-  Inside a @racket[quote-template] form, reverts to the variable resolution
-  semantics of @racket[with-template], ensuring any code generated with
-  @tech{template macro} variables retains the @rtech{lexical information},
-  source-location information, and @rtech{syntax properties} of the
-  originating template source.
-
-  Example:
-  @example[
-(quote-template ([$where here])
-  (list #`$where (unquote-template #`$where)))
-  ]
-
-  Inside a @seclink["Module_Templates"]{module template}, the default
-  @rtech{readtable} is extended so that @racketparenfont{#/} is a shorthand
-  for @racket[unquote-template].
-
-  For example,
-  @codeblock{
-#lang template () #`#/here
-  }
-
-  produces the same @rtech{read}-time datum as
-  @codeblock{
-#lang template () #`(unquote-template here)
-  }
 }
 
 @; -----------------------------------------------------------------------------
@@ -509,7 +483,7 @@ o
 
 @section{Module Templates}
 
-In @racketcommentfont{template/lang-test.rkt}:
+In @racketcommentfont{template/tests/lang-template.rkt}:
 
 @codeblock|{
 #lang template ($x)
@@ -517,13 +491,13 @@ In @racketcommentfont{template/lang-test.rkt}:
 (define $xs '($x $x $x))
 }|
 
-@defform[(load-module-template id mod-path)]{
+@defform[(load-template id mod-path)]{
 
   Binds @var[id] to the @tech{template macro} provided by @var[mod-path].
 
   Example:
   @example[
-(load-module-template tpl template/lang-test)
+(load-template tpl template/tests/lang-template)
 (tpl a)
 as
   ]
@@ -536,7 +510,7 @@ as
 
   Example:
   @example[
-(module my-template-mod template
+(module my-template-mod template/lang
   ($x)
   (define $xs '($x $x $x $x)))
 (require 'my-template-mod)
@@ -548,27 +522,27 @@ bs
 
 @; -----------------------------------------------------------------------------
 
-@section{Identifier Sequences}
+@; @section{Identifier Sequences}
 
-@defform[(define-template-ids id member-id ...)]{
+@; @defform[(define-template-ids id member-id ...)]{
 
-  Defines @var[id] as a list of @rtech{identifiers} for use with
-  @racket[in-template-ids].
+@;   Defines @var[id] as a list of @rtech{identifiers} for use with
+@;   @racket[in-template-ids].
 
-}
+@; }
 
-@defform[(in-template-ids id)]{
+@; @defform[(in-template-ids id)]{
 
-  Produces a sequence whose elements are the successive identifiers bound to
-  @var[id] by @racket[define-template-ids].
+@;   Produces a sequence whose elements are the successive identifiers bound to
+@;   @var[id] by @racket[define-template-ids].
 
-  Example:
-  @example[
-(define-template-ids operators + - * /)
-(for/template ([$op (in-template-ids operators)])
-  (displayln ($op 2 3)))
-  ]
-}
+@;   Example:
+@;   @example[
+@; (define-template-ids operators + - * /)
+@; (for/template ([$op (in-template-ids operators)])
+@;   (displayln ($op 2 3)))
+@;   ]
+@; }
 
 @;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
