@@ -20,7 +20,14 @@
 @require{./template-includes.rkt}
 
 @require[
+  @for-syntax[
+    racket/base
+    racket/file
+    racket/function
+    racket/syntax
+  ]
   @for-label[
+    debug-scopes
     racket/base
     racket/contract
     racket/function
@@ -60,11 +67,11 @@ four important differences:
 (with-template ([$x 3] [$y 2]) (add1 $x$y0))
   ]}
 
-  @item{Templates can escape to the expanding environment.
+  @item{Templates can escape to the expanding environment, even when they
+  appear @emph{outside} of a @rtech{syntax transformer}.
 
   @example[
-(let-syntax ([memo (list #'hello #'world)])
-  (begin-template '(#,@(syntax-local-value #'memo))))
+(begin-template '(#,@(list #'hello #'world)))
   ]}
 
   @item{Most templates become splicing forms when used inside other templates.
@@ -82,6 +89,11 @@ four important differences:
   }
 
 ]
+
+The @racketmodname[template] API splits ordinary macro @rtech{expansion} into
+two distinct stages: @deftech{template expansion} time and @deftech{macro
+expansion} time. Always, template variables are resolved and sub-template
+forms are expanded before ordinary macros are expanded.
 
 @subsection{The `@racketid[$]' Convention}
 
@@ -105,8 +117,8 @@ Examples:
 
 @defform[(with-template ([var-id val-expr] ...) tpl ...)]{
 
-  Expands sub-templates in the @var[tpl]s, then substitutes @var[var-id]s with
-  @var[val-expr]s while retaining the @rtech{lexical information},
+  Expands the sub-templates of the @var[tpl]s and substitutes @var[var-id]s
+  with @var[val-expr]s while retaining the @rtech{lexical information},
   source-location information, and @rtech{syntax properties} of the
   originating template source.
 
@@ -114,8 +126,8 @@ Examples:
   @example[
 (with-template ([$x a]
                 [$y b])
-  (define $xs '($x $x))
-  (displayln `($xs = ,$xs)))
+  (define $xs '($x $x $x))
+  (displayln `($xs = ,@$xs)))
   ]
 
   When a @racket[with-template] form appears at the top level, at module
@@ -137,22 +149,42 @@ Examples:
   ]
 }
 
-@defform[(quote-template ([var-id val-expr] ...) tpl ...)]{
+@defform[(semiquote-template ([var-id val-expr] ...) tpl ...)]{
 
   Like @racket[with-template], except sub-templates wrapped in @racket[syntax]
   or @racket[quasisyntax] are not expanded, and code fragments generated from
   template variables inherit the @rtech{lexical information}, source-location
-  information, and @rtech{syntax properties} of the expression bound to the
-  first variable used.
+  information, and @rtech{syntax properties} of the @var[val-expr] bound to
+  the first @var[var-id] used.
 
-  When a @racket[quote-template] form appears at the top level, at module
+  Example:
+  @example[
+(semiquote-template ([$where 'here]) #'$where)
+  ]
+
+  @example[
+(with-template ([$where 'not--here]) #'$where)
+  ]
+
+  When a @racket[semiquote-template] form appears at the top level, at module
   level, or in an internal-definition position (before any expression in the
   internal-definition sequence), it is equivalent to splicing the expanded
   @var[tpl]s into the enclosing context.
+}
+
+@defform[(quote-template ([var-id val-expr] ...) tpl ...)]{
+
+  Like @racket[semiquote-template], except sub-templates are not expanded.
 
   Example:
-  @EXAMPLE[
-(quote-template ([$where here]) #'(untemplate $where))
+  @example[
+(quote-template ([$n 5])
+  '((for/template ([$k (in-range $n)]) $k)))
+  ]
+
+  @example[
+(semiquote-template ([$n 5])
+  '((for/template ([$k (in-range $n)]) $k)))
   ]
 }
 
@@ -160,10 +192,15 @@ Examples:
 
 @section{Constructors}
 
-@defform[(template (var-id ...) tpl ...)]{
+@deftogether[(
+@defform[(template (var-id ...) tpl ...)]
+@defform[(quoted-template (var-id ...) tpl ...)]
+@defform[(semiquoted-template (var-id ...) tpl ...)]
+)]{
 
-  Produces a @rtech{syntax transformer} for a macro that accepts an argument
-  for each @var[var-id] and substitutes them into the @var[tpl]s.
+  Produces a @tech{template macro} procedure; a @rtech{syntax transformer} for
+  a macro that accepts an argument for each @var[var-id] and substitutes them
+  into the @var[tpl]s.
 
   Example:
   @example[
@@ -177,10 +214,15 @@ Examples:
   ]
 }
 
-@defform[(templates [(var-id ...) tpl ...] ...)]{
+@deftogether[(
+@defform[(templates [(var-id ...) tpl ...] ...)]
+@defform[(quoted-templates [(var-id ...) tpl ...] ...)]
+@defform[(semiquoted-templates [(var-id ...) tpl ...] ...)]
+)]{
 
-  Produces a @rtech{syntax transformer} procedure. Each @racket[[(var-id ...)
-  tpl ...]] clause is analogous to a single @racket[template] procedure;
+  Produces a @tech{template macro} procedure. Each @racket[[(var-id ...) tpl
+  ...]] clause is analogous to a single @racket[template],
+  @racket[quoted-template], or @racket[semiquoted-template] procedure;
   applying the @racket[templates]-generated procedure is the same as applying
   a procedure that corresponds to one of the clauses---the first procedure
   that accepts the given number of arguments. If no corresponding procedure
@@ -189,10 +231,9 @@ Examples:
   Example:
   @example[
 (define-syntax f
-  (templates
-    [() 0]
-    [($x) '$x]
-    [($x $y) '$x-$y]))
+  (templates [() 0]
+             [($x) '$x]
+             [($x $y) '$x-$y]))
 (list (f) (f one) (f one two))
 (eval:error (f one two three))
   ]
@@ -216,36 +257,17 @@ Examples:
   '(1 (untemplate-splicing '(2 3))))
   ]
 
-  Results that are not @rtech{syntax objects} acquire the @rtech{lexical
-  information}, source-location information, and @rtech{syntax properties} of
-  the expressions that produce them.
+  If @var[expr] does not evaluate to a @rtech{syntax object}, the result is
+  wrapped in the @rtech{lexical information}, source-location information, and
+  @rtech{syntax properties} of @var[expr].
 
   Examples:
   @example[
-(begin-template #`(untemplate 'here))
-(begin-template #`(untemplate (datum->syntax #f 'nowhere)))
-  ]
-
-  As a notational convenience, @racket[unsyntax] / @racket[unsyntax-splicing]
-  forms occurring inside a template and outside a @racket[quasisyntax] are
-  aliased to @racket[untemplate] / @racket[untemplate-splicing].
-
-  Examples:
-  @EXAMPLE[
-(let-syntax ([x #'(+ 2 3)])
-  (begin-template
-    (+ 1 #,(syntax-local-value #'x))))
-(begin-template
-  '(1 #,@'(2 3)))
-  ]
-
-  But this notation is disabled in the body of a @racket[syntax] form.
-
-  Example:
-  @EXAMPLE[
-(begin-template #'#,no-escape)
+(begin-template #'(untemplate 'here))
+(begin-template #'(untemplate (datum->syntax #f 'nowhere)))
   ]
 }
+
 @; -----------------------------------------------------------------------------
 
 @section{Combiners}
@@ -304,13 +326,14 @@ Examples:
 
   A clause that starts with @racket[else] must be the last clause.
 
-  If no clauses are present, @racket[(void)] takes its place.
+  If no clauses are present, @racket[(void)] takes the place of the
+  @racket[cond-template] form.
 
   If the first clause does not start with @racket[else] and its
   @var[test-expr], which is an expression at @rtech{phase level} 1 relative to
   the surrounding context, produces @racket[#f], then the result is the same
-  as a @racket[cond-template] form with the remaining clauses. Otherwise,
-  @racket[(begin tpl ...)] takes its place.
+  as a @racket[cond-template] form with the remaining clauses. Otherwise, the
+  @var[tpl]s take the place of the @racket[cond-template] form.
 
   Examples:
   @example[
@@ -330,16 +353,14 @@ Examples:
 
   Evaluates @var[test-expr], which is an expression at @rtech{phase level} 1
   relative to the surrounding context. If the result is not @racket[#f], then
-  @racket[(begin tpl ...)] takes its places. otherwise, @racket[(void)] takes
-  its place.
+  the @var[tpl]s takes the place of the @racket[when-template] form.
+  Otherwise, @racket[(void)] takes its place.
 
   Examples:
   @example[
-(displayln (when-template (positive? -5) 'hi))
-(let-syntax ([x #t])
-  (begin-template
-    (list (when-template (syntax-local-value #'x)
-            'hey 'there))))
+(displayln (when-template #f 'hi))
+(begin-template
+  (list (when-template #t 'hey 'there)))
   ]
 }
 
@@ -349,19 +370,16 @@ Examples:
 
   Examples:
   @example[
-(displayln (unless-template (positive? -5) 'hi))
-(let-syntax ([x #t])
-  (begin-template
-    (list (unless-template (syntax-local-value #'x)
-            'hey 'there))))
+(displayln (unless-template #f 'hi))
+(begin-template
+  (list (unless-template #t 'hey 'there)))
   ]
 }
 
 @defform[(for/template ([var-id seq-expr] ...) tpl ...)]{
 
-  Iteratively evaluates the @var[tpl]s. The @racket[seq-expr]s are evaluated
-  left-to-right at phase 1, and each must produce a @rtech{sequence} whose
-  elements are syntax objects or primitive values.
+  Iterates like @racket[for/list], but results are accumulated into a
+  @racket[begin-template] instead of a list.
 
   Example:
   @example[
@@ -372,7 +390,7 @@ Examples:
   ]
 
   When @racket[for/template] is used in an @rtech{expression context} inside a
-  template, the resultss are spliced into the enclosing context.
+  template, the results are spliced into the enclosing context.
 
   Example:
   @example[
@@ -396,10 +414,9 @@ Examples:
   Examples:
   @example[
 (begin-template
-  (list
-    (for*/template ([$m (in-range 3)]
-                    [$n (in-range 3)])
-      (+ $n (* $m 3)))))
+  (list (for*/template ([$m (in-range 3)]
+                        [$n (in-range 3)])
+          (+ $n (* $m 3)))))
   ]
 }
 
@@ -424,12 +441,27 @@ Examples:
   ]
 }
 
+@defform[(define-templates [(id var-id ...) tpl ...] ...)]{
+
+  Like @racket[define-template], but creates a @rtech{transformer} binding for
+  each @var[id].
+
+  Example:
+  @example[
+(define-templates
+  [(print-one $obj) (displayln "$obj")]
+  [(print-many $objs)
+   (for/template ([$obj (in-syntax #'$objs)])
+     (print-one $obj))])
+(print-many (one two three))
+  ]
+}
+
 @defform[(let-template ([(id var-id ...) tpl ...] ...) body-tpl ...)]{
 
   Creates a @rtech{transformer} binding of each @var[id] with
-  @racket[(template (var-id ...) tpl ...)], which is an expression at
-  @rtech{phase level} 1 relative to the surrounding context. Each @var[id] is
-  bound in the @var[body-tpl]s, and not in other @var[tpl]s.
+  @racket[(template (var-id ...) tpl ...)]. Each @var[id] is bound in the
+  @var[body-tpl]s, and not in other @var[tpl]s.
 
   Example:
   @example[
@@ -442,7 +474,7 @@ Examples:
 @defform[(letrec-template ([(id var-id ...) tpl ...] ...) body-tpl ...)]{
 
   Like @racket[let-template], except that each @var[var-id] is also bound
-  within all remaining @var[tpl]s.
+  within all @var[tpl]s.
 
   Example:
   @EXAMPLE[
@@ -479,17 +511,20 @@ o
 (list is-11-even? is-10-even?)
   ]
 }
+
 @; -----------------------------------------------------------------------------
 
 @section{Module Templates}
 
 In @racketcommentfont{template/tests/lang-template.rkt}:
 
-@codeblock|{
-#lang template ($x)
-
-(define $xs '($x $x $x))
-}|
+@(let-syntax ([go (λ _ (syntax-local-eval
+   #`#'(codeblock
+       #,@(let loop ([lines (file->lines "../tests/lang-template.rkt")])
+            (if (string=? (car lines) "")
+                (map (curryr string-append "\n") (cdr lines))
+                (loop (cdr lines)))))))])
+   (go))
 
 @defform[(load-template id mod-path)]{
 
@@ -498,12 +533,13 @@ In @racketcommentfont{template/tests/lang-template.rkt}:
   Example:
   @example[
 (load-template tpl template/tests/lang-template)
-(tpl a)
+(tpl a 4)
 as
+a4
   ]
 }
 
-@defform[(#%module-begin (var-id ...) tpl ...)]{
+@defform[(template-module-begin (var-id ...) tpl ...)]{
 
   Exports a binding of @var[the-template] to @racket[(template (var-id ...)
   tpl ...)].
@@ -519,30 +555,44 @@ bs
   ]
 }
 
-
 @; -----------------------------------------------------------------------------
 
-@; @section{Identifier Sequences}
+@section{Developer Tools}
 
-@; @defform[(define-template-ids id member-id ...)]{
+@defform[(debug-template tpl)]{
 
-@;   Defines @var[id] as a list of @rtech{identifiers} for use with
-@;   @racket[in-template-ids].
+  Displays the expanded form of @var[tpl], then evaluates the result.
 
-@; }
+  Examples:
+  @example[
+(debug-template (for/template ([$n 10]) $n))
+  ]
 
-@; @defform[(in-template-ids id)]{
+  @example[
+(debug-template (begin-template (list (for/template ([$n 10]) $n))))
+  ]
+}
 
-@;   Produces a sequence whose elements are the successive identifiers bound to
-@;   @var[id] by @racket[define-template-ids].
+@defform[(debug-template/scopes tpl)]{
 
-@;   Example:
-@;   @example[
-@; (define-template-ids operators + - * /)
-@; (for/template ([$op (in-template-ids operators)])
-@;   (displayln ($op 2 3)))
-@;   ]
-@; }
+  Displays the expanded form of @var[tpl], annotated with superscripts
+  indicating the scopes present on them, then evaluates the result.
+
+  Example:
+  @example[
+(debug-template/scopes
+  (for/template ([$x (in-syntax #'(A B C D E))]
+                 [$n (in-range 1 6)])
+    #'$x$n))
+  ]
+}
+
+@defform[(reset-debug-scopes)]{
+
+  Resets the internal counter used by @racket[debug-template/scopes] to print
+  a summary table.
+
+}
 
 @;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 

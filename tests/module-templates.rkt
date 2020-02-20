@@ -15,27 +15,31 @@
 #lang racket/base
 
 (module+ test
-  (require rackunit
-           template)
+  (require rackunit template (for-syntax racket/base))
 
   (test-case "#lang template"
     (local-require template/tests/lang-template)
-    (the-template a)
-    (check equal? as '(a a a)))
+    (the-template a 3)
+    (check equal? as '(a a a))
+    (check = a1 1) (check = a2 2) (check = a3 3))
 
-  (module test-module-template template/lang ($x)
-    (define $xs '($x $x $x $x $x)))
-
-  (local-require 'test-module-template)
-  (the-template b)
-  (check equal? bs '(b b b b b))
+  (module test-module-template template/lang
+    ($x $n)
+    (require (for-syntax racket/base))
+    (define $xs '((for/template ([$_ (in-range 1 (add1 $n))]) $x)))
+    (for/template ([$k (in-range 1 (add1 $n))])
+      (define $x$k $k)))
 
   (test-case "module template/lang"
     (local-require 'test-module-template)
-    (the-template b)
-    (check equal? bs '(b b b b b)))
+    (the-template b 5)
+    (check equal? bs '(b b b b b))
+    (check = b1 1) (check = b2 2) (check = b3 3)
+    (check = b4 4) (check = b5 5))
 
   (test-case "load-template"
     (load-template tpl template/tests/lang-template)
-    (tpl c)
-    (check equal? cs '(c c c))))
+    (tpl c 6)
+    (check equal? cs '(c c c c c c))
+    (check = c1 1) (check = c2 2) (check = c3 3)
+    (check = c4 4) (check = c5 5) (check = c6 6)))

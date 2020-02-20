@@ -12,6 +12,11 @@
 ;; See the License for the specific language governing permissions and
 ;; limitations under the License.
 
-#lang template ($x)
+#lang template ($x $n)
 
-(define $xs '($x $x $x))
+(require (for-syntax racket/base))
+
+(define $xs '((for/template ([$_ (in-range 1 (add1 $n))]) $x)))
+
+(for/template ([$k (in-range 1 (add1 $n))])
+  (define $x$k $k))

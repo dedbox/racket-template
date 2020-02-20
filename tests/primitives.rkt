@@ -120,20 +120,27 @@
   (define-test-suite |quote-template tests|
     (test-case "template variables are resolved"
       (check = (syntax-e (quote-template ([$x 1] [$y 2]) #'$x$y3)) 123))
-    (test-case "templates are expanded"
-      (check eq? (quote-template () '(quote-template () X)) 'X))
-    (test-case "unsyntax escapes to the template-expanding environment"
-      (check eq? (quote-template () '#,(syntax-local-value #'X)) 'A))
-    (test-case "unsyntax-splicing escapes to the template-expanding environment"
-      (check equal? (quote-template () '(#,@(syntax-local-value #'XY))) '(A B))
-      (check equal? (quote-template () '(#,@(syntax-local-value #'ZW))) '(A B)))
-    (test-case "untemplate escapes to the template-expanding environment"
-      (check eq? (quote-template () '(untemplate (syntax-local-value #'X))) 'A))
-    (test-case "untemplate-splicing escapes to the template-expanding environment"
-      (check equal? (quote-template () '((untemplate-splicing (syntax-local-value #'XY))))
-             '(A B))
-      (check equal? (quote-template () '((untemplate-splicing (syntax-local-value #'ZW))))
-             '(A B)))
+    (test-case "templates are not expanded"
+      (check equal? (quote-template () '(quote-template () X)) '(quote-template () X)))
+    (test-case "unsyntax does not escape to an expanding environment"
+      (check equal?
+             (quote-template () '#,(syntax-local-value #'X))
+             '#,(syntax-local-value #'X)))
+    (test-case "unsyntax-splicing does not escape to an expanding environment"
+      (check equal?
+             (quote-template () '(#,@(syntax-local-value #'XY)))
+             '(#,@(syntax-local-value #'XY)))
+      (check equal?
+             (quote-template () '(#,@(syntax-local-value #'ZW)))
+             '(#,@(syntax-local-value #'ZW))))
+    (test-case "untemplate does not escape to an expanding environment"
+      (check equal?
+             (quote-template () '(untemplate (syntax-local-value #'X)))
+             '(untemplate (syntax-local-value #'X))))
+    (test-case "untemplate-splicing does not escape to an expanding environment"
+      (check equal?
+             (quote-template () '((untemplate-splicing (syntax-local-value #'XY))))
+             '((untemplate-splicing (syntax-local-value #'XY)))))
 
     (test-suite "inside quasisyntax"
       (test-case "template variables are resolved"
