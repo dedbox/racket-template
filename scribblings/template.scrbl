@@ -24,6 +24,7 @@
     racket/base
     racket/file
     racket/function
+    racket/runtime-path
     racket/syntax
   ]
   @for-label[
@@ -518,9 +519,11 @@ o
 
 In @racketcommentfont{template/tests/lang-template.rkt}:
 
-@(let-syntax ([go (λ _ (syntax-local-eval
+@(begin-for-syntax (define-runtime-path lang-tpl-path "lang-template.rkt"))
+@(let-syntax ([go (λ _
+  (syntax-local-eval
    #`#'(codeblock
-       #,@(let loop ([lines (file->lines "lang-template.rkt")])
+       #,@(let loop ([lines (file->lines lang-tpl-path)])
             (if (string=? (car lines) "")
                 (map (curryr string-append "\n") (cdr lines))
                 (loop (cdr lines)))))))])
