@@ -51,7 +51,7 @@
                  (length (syntax->list #'(var ...))))
        #:with (var* (... ...)) (map syntax-local-introduce (syntax->list #'(var ...)))
        #:with (tpl* (... ...)) (map syntax-local-introduce (syntax->list #'(tpl ...)))
-       #'(with-template ([var* arg] (... ...)) tpl* (... ...))]
+       #'(with-template ([var* arg] (... ...)) (begin-template tpl* (... ...)))]
       ...))
 
   (define-simple-macro (template (var:id ...) tpl ...)
@@ -79,7 +79,7 @@
                  (length (syntax->list #'(var ...))))
        #:with (var* (... ...)) (map syntax-local-introduce (syntax->list #'(var ...)))
        #:with (tpl* (... ...)) (map syntax-local-introduce (syntax->list #'(tpl ...)))
-       #'(quote-template ([var* arg] (... ...)) tpl* (... ...))]
+       #'(quote-template ([var* arg] (... ...)) (begin-template tpl* (... ...)))]
       ...))
 
   (define-simple-macro (quoted-template (var:id ...) tpl ...)
@@ -93,7 +93,7 @@
                  (length (syntax->list #'(var ...))))
        #:with (var* (... ...)) (map syntax-local-introduce (syntax->list #'(var ...)))
        #:with (tpl* (... ...)) (map syntax-local-introduce (syntax->list #'(tpl ...)))
-       #'(semiquote-template ([var* arg] (... ...)) tpl* (... ...))]
+       #'(semiquote-template ([var* arg] (... ...)) (begin-template tpl* (... ...)))]
       ...))
 
   (define-simple-macro (semiquoted-template (var:id ...) tpl ...)
