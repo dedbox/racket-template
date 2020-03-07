@@ -317,26 +317,27 @@
 (define-for-syntax (resolve-unless test tpls)
   (resolve-many (if (syntax-local-eval (resolve-one test)) null tpls)))
 
-(define-for-syntax (resolve-comprehension for/?-stx vars seqs tpls)
-  (with-syntax ([for/? for/?-stx]
-                [(var ...) vars]
-                [(seq ...) (resolve-many seqs)]
-                [(tpl ...) (resolve-many tpls)])
-    (define-values (ctx bodies)
-      (syntax-local-eval
-       #'(values
-          #'ctx
-          (flatten
-           (for/? ([var seq] ...)
-             (let ([comp-vars (list #'var ...)]
-                   [comp-args
-                    (map datum->syntax (list #'var ...) (list var ...))])
-               (parameterize
-                   ([current-vars (append comp-vars (current-vars))]
-                    [current-args (append comp-args (current-args))]
-                    [current-comp-vars (append comp-vars (current-comp-vars))])
-                 (resolve-many (list #'tpl ...)))))))))
-    (map (curryr (make-syntax-delta-introducer ctx #'here) 'remove) bodies)))
+(define-for-syntax (resolve-comprehension for/? vars seqs tpls)
+  (define-values (ctx args-list)
+    (syntax-local-eval
+     (with-syntax ([(var ...) vars]
+                   [(seq ...) (parameterize ([keep-template-scopes? #t])
+                                (resolve-many seqs))])
+       #`(values #'ctx (#,for/? ([var seq] ...)
+                        (map datum->syntax (list #'var ...) (list var ...)))))))
+  (define rescope (curryr (make-syntax-delta-introducer ctx #'here) 'remove))
+  (define tpls*
+    (parameterize ([current-resolvers (cons resolve-quote-template (current-resolvers))]
+                   [resolve-inside-syntax? #f]
+                   [resolve-outside-syntax? #f])
+      (resolve-many tpls)))
+  (flatten
+   (for/list ([args (in-list args-list)])
+     (parameterize ([current-vars (append vars (current-vars))]
+                    [current-args (append (map rescope args) (current-args))]
+                    [current-comps (append vars (current-comps))]
+                    [keep-template-scopes? #t])
+       (resolve-many tpls*)))))
 
 (define-for-syntax (null-voided head stxs)
   (cond [(null? stxs) #'(void)]
