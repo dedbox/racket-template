@@ -617,14 +617,11 @@
 
 (define-simple-macro (debug-template tpl)
   #:with tpl* (local-expand (attribute tpl) 'top-level #f)
-  (pretty-display 'tpl*))
+  (begin (pretty-display 'tpl*) tpl*))
 
 (define-simple-macro (debug-template/scopes tpl)
-  #:with tpl** (syntax-disarm (local-expand (attribute tpl) 'top-level (list #'syntax)) #f)
-  (begin
-    (displayln (+scopes #'tpl**))
-    (print-full-scopes #f)
-    tpl**))
+  #:with tpl* (syntax-disarm (local-expand (attribute tpl) 'top-level (list #'syntax)) #f)
+  (begin (displayln (+scopes #'tpl*)) (print-full-scopes #f) tpl*))
 
 (define-simple-macro (reset-debug-scopes)
   (parameterize ([current-output-port (open-output-string)])
