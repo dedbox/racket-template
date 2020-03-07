@@ -18,7 +18,7 @@
   (require rackunit template (for-syntax racket/base))
 
   (test-case "#lang template"
-    (local-require template/tests/lang-template)
+    (local-require template/scribblings/lang-template)
     (the-template a 3)
     (check equal? as '(a a a))
     (check = a1 1) (check = a2 2) (check = a3 3))
@@ -38,7 +38,7 @@
     (check = b4 4) (check = b5 5))
 
   (test-case "load-template"
-    (load-template tpl template/tests/lang-template)
+    (load-template tpl template/scribblings/lang-template)
     (tpl c 6)
     (check equal? cs '(c c c c c c))
     (check = c1 1) (check = c2 2) (check = c3 3)

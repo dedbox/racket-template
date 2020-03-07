@@ -520,7 +520,7 @@ In @racketcommentfont{template/tests/lang-template.rkt}:
 
 @(let-syntax ([go (λ _ (syntax-local-eval
    #`#'(codeblock
-       #,@(let loop ([lines (file->lines "../tests/lang-template.rkt")])
+       #,@(let loop ([lines (file->lines "lang-template.rkt")])
             (if (string=? (car lines) "")
                 (map (curryr string-append "\n") (cdr lines))
                 (loop (cdr lines)))))))])
@@ -532,7 +532,7 @@ In @racketcommentfont{template/tests/lang-template.rkt}:
 
   Example:
   @example[
-(load-template tpl template/tests/lang-template)
+(load-template tpl template/scribblings/lang-template)
 (tpl a 4)
 as
 a4
