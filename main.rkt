@@ -33,12 +33,12 @@
 
 (provide untemplate untemplate-splicing define-templates define-template let-template
          letrec-template splicing-let-template splicing-letrec-template with-template
-         quote-template semiquote-template begin-template begin0-template if-template
-         cond-template when-template unless-template for/template for*/template
-         template-module-begin load-template debug-template debug-template/scopes
-         reset-debug-scopes
-         (for-syntax templates template quoted-templates quoted-template
-                     semiquoted-templates semiquoted-template))
+         semiwith-template quote-template semiquote-template begin-template
+         begin0-template if-template cond-template when-template unless-template
+         for/template for*/template template-module-begin load-template debug-template
+         debug-template/scopes reset-debug-scopes
+         (for-syntax templates template semitemplates semitemplate quoted-templates
+                     quoted-template semiquoted-templates semiquoted-template))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Binding Forms
@@ -56,6 +56,20 @@
 
   (define-simple-macro (template (var:id ...) tpl ...)
     (templates [(var ...) tpl ...])))
+
+(begin-for-syntax
+  (define-simple-macro (semitemplates [(var:id ...) tpl ...] ...)
+    (syntax-parser
+      [(_ arg (... ...))
+       #:when (= (length (attribute arg))
+                 (length (syntax->list #'(var ...))))
+       #:with (var* (... ...)) (map syntax-local-introduce (syntax->list #'(var ...)))
+       #:with (tpl* (... ...)) (map syntax-local-introduce (syntax->list #'(tpl ...)))
+       #'(semiwith-template ([var* arg] (... ...)) (begin-template tpl* (... ...)))]
+      ...))
+
+  (define-simple-macro (semitemplate (var:id ...) tpl ...)
+    (semitemplates [(var ...) tpl ...])))
 
 (begin-for-syntax
   (define-simple-macro (quoted-templates [(var:id ...) tpl ...] ...)
@@ -114,6 +128,15 @@
      (resolve-with (map syntax-local-introduce (attribute var))
                    (map syntax-local-introduce (attribute arg))
                    (map syntax-local-introduce (attribute tpl)))))])
+
+(define-syntax-parser semiwith-template
+  [(_ ([var:id arg] ...) tpl ...)
+   (syntax-local-introduce
+    (null-voided
+     #'begin
+     (resolve-semiwith (map syntax-local-introduce (attribute var))
+                       (attribute arg)
+                       (map syntax-local-introduce (attribute tpl)))))])
 
 (define-syntax-parser quote-template
   [(_ ([var:id arg] ...) tpl ...)
@@ -245,25 +268,37 @@
 (define-for-syntax (resolve-with vars args tpls)
   (parameterize ([current-vars (append vars (current-vars))]
                  [current-args (append args (current-args))]
-                 [current-quote? #f]
                  [current-resolvers (cons resolve-template (current-resolvers))]
-                 [resolve-inside-syntax? #t])
+                 [keep-template-scopes? #t]
+                 [resolve-inside-syntax? #t]
+                 [resolve-outside-syntax? #t])
+    (resolve-many tpls)))
+
+(define-for-syntax (resolve-semiwith vars args tpls)
+  (parameterize ([current-vars (append vars (current-vars))]
+                 [current-args (append args (current-args))]
+                 [current-resolvers (cons resolve-template (current-resolvers))]
+                 [keep-template-scopes? #f]
+                 [resolve-inside-syntax? #t]
+                 [resolve-outside-syntax? #t])
     (resolve-many tpls)))
 
 (define-for-syntax (resolve-quote vars args tpls)
   (parameterize ([current-vars (append vars (current-vars))]
                  [current-args (append args (current-args))]
-                 [current-quote? #t]
                  [current-resolvers (cons resolve-quote-template (current-resolvers))]
-                 [resolve-inside-syntax? #f])
+                 [keep-template-scopes? #f]
+                 [resolve-inside-syntax? #f]
+                 [resolve-outside-syntax? #f])
     (resolve-many tpls)))
 
 (define-for-syntax (resolve-semiquote vars args tpls)
   (parameterize ([current-vars (append vars (current-vars))]
                  [current-args (append args (current-args))]
-                 [current-quote? #t]
-                 [current-resolvers (cons resolve-template (current-resolvers))]
-                 [resolve-inside-syntax? #f])
+                 [current-resolvers (cons resolve-quote-template (current-resolvers))]
+                 [keep-template-scopes? #t]
+                 [resolve-inside-syntax? #f]
+                 [resolve-outside-syntax? #f])
     (resolve-many tpls)))
 
 (define-for-syntax (resolve-if test pass fail)
@@ -324,10 +359,9 @@
   (define-syntax-class literal
     (pattern (~or :id :boolean :char :keyword :number :regexp :byte-regexp :str :bytes)))
   (define-literal-set template-forms
-    (untemplate untemplate-splicing with-template quote-template semiquote-template
-                begin-template begin0-template if-template cond-template when-template
-                unless-template for/template for*/template
-
+    (untemplate untemplate-splicing with-template semiwith-template quote-template
+                semiquote-template begin-template begin0-template if-template
+                cond-template when-template unless-template for/template for*/template
                 let-template))
 
   (define-simple-macro (either inside-expr not-inside-expr)
@@ -349,6 +383,8 @@
     [(untemplate          tpl) (list (resolve-untemplate          (attribute tpl)))]
     [(with-template ([var:id arg] ...) tpl ...)
      (resolve-with (attribute var) (attribute arg) (attribute tpl))]
+    [(semiwith-template ([var:id arg] ...) tpl ...)
+     (resolve-semiwith (attribute var) (attribute arg) (attribute tpl))]
     [(quote-template ([var:id arg] ...) tpl ...)
      (resolve-quote (attribute var) (attribute arg) (attribute tpl))]
     [(semiquote-template ([var:id arg] ...) tpl ...)
@@ -370,14 +406,7 @@
                             (attribute var)
                             (attribute seq)
                             (attribute tpl))]
-    [(_ ...)   (list (resolve-app     this-syntax))]
-    [(_ . _)   (list (resolve-pair    this-syntax))]
-    [:vector-t (list (resolve-vector  this-syntax))]
-    [:box-t    (list (resolve-box     this-syntax))]
-    [:hash-t   (list (resolve-hash    this-syntax))]
-    [:prefab-t (list (resolve-prefab  this-syntax))]
-    [:literal  (list (resolve-literal this-syntax))]
-    [_ (list this-syntax)]))
+    [_ (resolve-quote-template this-syntax)]))
 
 (define-for-syntax resolve-quasisyntax
   (syntax-parser
@@ -387,39 +416,7 @@
     [(quasisyntax tpl) (list (resolve-quasisyntax-object (attribute tpl)))]
     [   (unsyntax tpl) (list    (resolve-unsyntax-object (attribute tpl)))]
     [  (unsyntax-splicing tpl) (list (resolve-unsyntax-splicing-object (attribute tpl)))]
-    [(untemplate          tpl)    (maybe (list (resolve-untemplate (attribute tpl))))]
-    [(untemplate-splicing tpl) (maybe (resolve-untemplate-splicing (attribute tpl)))]
-    [(with-template ([var:id arg] ...) tpl ...)
-     (maybe (resolve-with (attribute var) (attribute arg) (attribute tpl)))]
-    [(quote-template ([var:id arg] ...) tpl ...)
-     (maybe (resolve-quote (attribute var) (attribute arg) (attribute tpl)))]
-    [(semiquote-template ([var:id arg] ...) tpl ...)
-     (maybe (resolve-semiquote (attribute var) (attribute arg) (attribute tpl)))]
-    [(if-template test pass fail)
-     (maybe (resolve-if (attribute test) (attribute pass) (attribute fail)))]
-    [(cond-template [test:not-else then-tpl ...] ...
-                    (~optional [(~literal else) else-tpl ...]))
-     (maybe (resolve-cond (attribute test) (attribute then-tpl) (attribute else-tpl)))]
-    [  (when-template test tpl ...)   (maybe (resolve-when (attribute test) (attribute tpl)))]
-    [(unless-template test tpl ...) (maybe (resolve-unless (attribute test) (attribute tpl)))]
-    [(for/template ([var:id seq] ...) tpl ...)
-     (maybe (resolve-comprehension #'for/list
-                                   (attribute var)
-                                   (attribute seq)
-                                   (attribute tpl)))]
-    [(for*/template ([var:id seq] ...) tpl ...)
-     (maybe (resolve-comprehension #'for*/list
-                                   (attribute var)
-                                   (attribute seq)
-                                   (attribute tpl)))]
-    [(_ ...)   (list (resolve-app     this-syntax))]
-    [(_ . _)   (list (resolve-pair    this-syntax))]
-    [:vector-t (list (resolve-vector  this-syntax))]
-    [:box-t    (list (resolve-box     this-syntax))]
-    [:hash-t   (list (resolve-hash    this-syntax))]
-    [:prefab-t (list (resolve-prefab  this-syntax))]
-    [:literal  (list (resolve-literal this-syntax))]
-    [_ (list this-syntax)]))
+    [_ (resolve-syntax this-syntax)]))
 
 (define-for-syntax resolve-syntax
   (syntax-parser
@@ -428,6 +425,8 @@
     [(untemplate-splicing tpl) (maybe (resolve-untemplate-splicing (attribute tpl)))]
     [(with-template ([var:id arg] ...) tpl ...)
      (maybe (resolve-with (attribute var) (attribute arg) (attribute tpl)))]
+    [(semiwith-template ([var:id arg] ...) tpl ...)
+     (maybe (resolve-semiwith (attribute var) (attribute arg) (attribute tpl)))]
     [(quote-template ([var:id arg] ...) tpl ...)
      (maybe (resolve-quote (attribute var) (attribute arg) (attribute tpl)))]
     [(semiquote-template ([var:id arg] ...) tpl ...)
@@ -449,14 +448,7 @@
                                    (attribute var)
                                    (attribute seq)
                                    (attribute tpl)))]
-    [(_ ...)   (list (resolve-app     this-syntax))]
-    [(_ . _)   (list (resolve-pair    this-syntax))]
-    [:vector-t (list (resolve-vector  this-syntax))]
-    [:box-t    (list (resolve-box     this-syntax))]
-    [:hash-t   (list (resolve-hash    this-syntax))]
-    [:prefab-t (list (resolve-prefab  this-syntax))]
-    [:literal  (list (resolve-literal this-syntax))]
-    [_ (list this-syntax)]))
+    [_ (resolve-quote-template this-syntax)]))
 
 (define-for-syntax resolve-quote-template
   (syntax-parser
@@ -472,10 +464,11 @@
 
 (define-for-syntax current-vars (make-parameter null))
 (define-for-syntax current-args (make-parameter null))
-(define-for-syntax current-quote? (make-parameter #f))
-(define-for-syntax current-comp-vars (make-parameter null))
+(define-for-syntax current-comps (make-parameter null))
 (define-for-syntax current-resolvers (make-parameter (list resolve-template)))
+(define-for-syntax keep-template-scopes? (make-parameter #t))
 (define-for-syntax resolve-inside-syntax? (make-parameter #t))
+(define-for-syntax resolve-outside-syntax? (make-parameter #t))
 
 (define-for-syntax (resolve stx)
   ((car (current-resolvers)) stx))
@@ -530,32 +523,32 @@
 
 (define-for-syntax (resolve-literal stx)
   (define str (syntax->string stx))
-  (if (has-comp-vars? str)
-      (string->syntax stx (resolve-vars str))
-      (if (has-template-vars? str)
-          (if (current-quote?)
-              (string->syntax (var-arg str) (resolve-vars str))
-              (string->syntax stx (resolve-vars str)))
-          stx)))
+  (if (has-template-vars? str)
+      (if (or (keep-template-scopes?)
+              (is-comp? (has-template-vars? str)))
+          (string->syntax stx (resolve-vars str))
+          (string->syntax (var-arg str) (resolve-vars str)))
+      stx))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Template Variables
 
 (define-for-syntax (has-template-vars? str)
   (for/or ([var (in-list (current-vars))])
-    (and (has-template-var? str var) var)))
+    (and (has-var? str var) var)))
 
-(define-for-syntax (has-template-var? str var)
+(define-for-syntax (has-var? str var)
   (string-contains? str (syntax->string var)))
 
-(define-for-syntax (has-comp-vars? str)
-  (for/or ([var (in-list (current-comp-vars))])
-    (has-template-var? str var)))
+(define-for-syntax (is-comp? var)
+  (and var (member (syntax->string var)
+                   (map syntax->string (current-comps))
+                   string=?)))
 
 (define-for-syntax (var-arg str)
   (for/or ([var (in-list (current-vars))]
            [arg (in-list (current-args))])
-    (and (has-template-var? str var) (syntax-local-introduce arg))))
+    (and (has-var? str var) (syntax-local-introduce arg))))
 
 (define-for-syntax (resolve-vars str)
   (for/fold ([str str])
@@ -597,7 +590,7 @@
    (define-syntax the-template (semiquoted-template (var ...) tpl* ...))))
 
 (define-simple-macro (load-template name:id mod-path)
-  #:with the-template (datum->syntax (syntax-local-introduce this-syntax) 'the-template)
+  #:with the-template (datum->syntax this-syntax 'the-template)
   (local-require (rename-in mod-path [the-template name])))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
