@@ -126,7 +126,7 @@
     (null-voided
      #'begin
      (resolve-with (map syntax-local-introduce (attribute var))
-                   (map syntax-local-introduce (attribute arg))
+                   (attribute arg)
                    (map syntax-local-introduce (attribute tpl)))))])
 
 (define-syntax-parser semiwith-template
@@ -249,7 +249,8 @@
     (with-syntax ([tpl (resolve-one stx)]) #'#,@tpl)))
 
 (define-for-syntax (resolve-untemplate stx)
-  (resyntax stx (syntax-local-eval (resolve-one stx))))
+  (parameterize ([current-resolvers (cdr (current-resolvers))])
+    (resyntax stx (syntax-local-eval (resolve-one stx)))))
 
 (define-for-syntax (resolve-untemplate-splicing stx)
   (define results
