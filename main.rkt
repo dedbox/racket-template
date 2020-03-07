@@ -586,10 +586,22 @@
          [((~literal require) spec ...) (values (append specs (attribute spec)) tpls)]
          [_ (values specs (append tpls (list stx)))])))
    list)
+
   (#%module-begin
-   (require template spec ...)
+   (require template (for-syntax racket/base) spec ...)
    (provide the-template)
-   (define-syntax the-template (semiquoted-template (var ...) tpl* ...))))
+
+   (define-for-syntax (rescope ctx)
+     (compose
+      (curryr (make-syntax-delta-introducer ctx #f) 'add)
+      (curryr (make-syntax-delta-introducer #'template-module-begin #f) 'remove)))
+
+   (define-syntax (the-template stx)
+     (syntax-case stx ()
+       [(_ arg (... ...))
+        (= (length (syntax->list #'(arg (... ...)))) template-arity)
+        (with-syntax ([(var* (... ...)) ((rescope stx) #'(var ...))])
+          #'(semiwith-template ([var* arg] (... ...)) tpl* ...))]))))
 
 (define-simple-macro (load-template name:id mod-path)
   #:with the-template (datum->syntax this-syntax 'the-template)
