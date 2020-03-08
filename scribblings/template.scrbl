@@ -56,8 +56,8 @@
 
 @section{Overview}
 
-@deftech{Template macros} are smilar to @gtech{pattern-based macros}, but with
-four important differences:
+@deftech{Template macros} are similar to @gtech{pattern-based macros}, but
+with four important differences:
 
 @itemlist[
 
