@@ -560,13 +560,15 @@
 
 (define-for-syntax syntax->string
   (syntax-parser
+    [(~datum ||) ""]
     [(a ...) (format "(~a)" (string-join (map syntax->string (attribute a))))]
     [:id (format "~a" (syntax->datum this-syntax))]
     [_ (format "~s" (syntax->datum this-syntax))]))
 
 (define-for-syntax (string->syntax ctx str)
   (define port (open-input-string str))
-  (begin0 (resyntax ctx (read port))
+  (define datum (read port))
+  (begin0 (resyntax ctx (if (eof-object? datum) '|| datum))
     (unless (eof-object? (read port))
       (raise-syntax-error
        #f "multiple expressions generated for single-expression context" ctx))))
