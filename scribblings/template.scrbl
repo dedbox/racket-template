@@ -150,42 +150,51 @@ Examples:
   ]
 }
 
-@defform[(semiquote-template ([var-id val-expr] ...) tpl ...)]{
+@defform[(semiwith-template ([var-id val-expr] ...) tpl ...)]{
 
-  Like @racket[with-template], except sub-templates wrapped in @racket[syntax]
-  or @racket[quasisyntax] are not expanded, and code fragments generated from
-  template variables inherit the @rtech{lexical information}, source-location
+  Like @racket[with-template], except literals generated from template
+  variables inherit the @rtech{lexical information}, source-location
   information, and @rtech{syntax properties} of the @var[val-expr] bound to
   the first @var[var-id] used.
 
   Example:
   @example[
-(semiquote-template ([$where 'here]) #'$where)
+(semiwith-template ([$where 'here]) #'$where)
   ]
 
   @example[
-(with-template ([$where 'not--here]) #'$where)
+(with-template ([$where 'not-here]) #'$where)
   ]
-
-  When a @racket[semiquote-template] form appears at the top level, at module
-  level, or in an internal-definition position (before any expression in the
-  internal-definition sequence), it is equivalent to splicing the expanded
-  @var[tpl]s into the enclosing context.
 }
 
 @defform[(quote-template ([var-id val-expr] ...) tpl ...)]{
 
-  Like @racket[semiquote-template], except sub-templates are not expanded.
+  Like @racket[semiwith-template], except sub-templates are not expanded.
 
   Example:
   @example[
-(quote-template ([$n 5])
-  '((for/template ([$k (in-range $n)]) $k)))
+(quote-template ([$where 'not-here]) #'(untemplate $where))
   ]
 
   @example[
-(semiquote-template ([$n 5])
-  '((for/template ([$k (in-range $n)]) $k)))
+(semiwith-template ([$where 'there]) #'(untemplate $where))
+  ]
+}
+
+@defform[(semiquote-template ([var-id val-expr] ...) tpl ...)]{
+
+  Like @racket[quote-template], except literals generated from template
+  variables inherit the @rtech{lexical information}, source-location
+  information, and @rtech{syntax properties} of the @var[val-expr] bound to
+  the first @var[var-id] used.
+
+  Example:
+  @example[
+(semiquote-template ([$where 'not-here]) #'(untemplate $where))
+  ]
+
+  @example[
+(quote-template ([$where 'not-here]) #'(untemplate $where))
   ]
 }
 
