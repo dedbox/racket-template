@@ -204,6 +204,7 @@ Examples:
 
 @deftogether[(
 @defform[(template (var-id ...) tpl ...)]
+@defform[(semitemplate (var-id ...) tpl ...)]
 @defform[(quoted-template (var-id ...) tpl ...)]
 @defform[(semiquoted-template (var-id ...) tpl ...)]
 )]{
@@ -226,17 +227,19 @@ Examples:
 
 @deftogether[(
 @defform[(templates [(var-id ...) tpl ...] ...)]
+@defform[(semitemplates [(var-id ...) tpl ...] ...)]
 @defform[(quoted-templates [(var-id ...) tpl ...] ...)]
 @defform[(semiquoted-templates [(var-id ...) tpl ...] ...)]
 )]{
 
   Produces a @tech{template macro} procedure. Each @racket[[(var-id ...) tpl
   ...]] clause is analogous to a single @racket[template],
-  @racket[quoted-template], or @racket[semiquoted-template] procedure;
-  applying the @racket[templates]-generated procedure is the same as applying
-  a procedure that corresponds to one of the clauses---the first procedure
-  that accepts the given number of arguments. If no corresponding procedure
-  accepts the given number of arguments, a syntax error is raised.
+  @racket[semitemplate], @racket[quoted-template], or
+  @racket[semiquoted-template] procedure; applying the
+  @racket[templates]-generated procedure is the same as applying a procedure
+  that corresponds to one of the clauses---the first procedure that accepts
+  the given number of arguments. If no corresponding procedure accepts the
+  given number of arguments, a syntax error is raised.
 
   Example:
   @example[
