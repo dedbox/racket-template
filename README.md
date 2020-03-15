@@ -16,27 +16,36 @@ the input text. The extra flexibility makes escaping to the expanding
 environment less necessary *and* more convenient.
 
 ``` racket
-> (define-template (define-fibonaccis $max-n)
-    (define-for-syntax fibonaccis
-      (make-immutable-hash
-       '(untemplate
-         (for/fold ([fibs '([1 . 1] [0 . 0])])
-                   ([n (in-range 2 (add1 $max-n))])
-           (cons (cons n (+ (cdar fibs) (cdadr fibs))) fibs)))))
-    (define/contract fibonacci
-      (-> (integer-in 0 $max-n) exact-nonnegative-integer?)
-      (curry hash-ref fibonaccis)))
-> (define-fibonaccis 20)
-> (fibonacci 10)
-55
-> (fibonacci 20)
-6765
-> (fibonacci 30)
-; fibonacci: contract violation
-;   expected: (integer-in 0 20)
-;   given: 30
-;   in: the 1st argument of
-;       (-> (integer-in 0 20) natural?)
+#lang racket/base
+
+(require racket/match template (for-syntax racket/base))
+
+(define-for-syntax the-fibs
+  (make-immutable-hash
+   (for/fold ([fibs '([1 . 1] [0 . 0])])
+             ([k (in-range 2 10)])
+     `([,k . ,(+ (cdar fibs) (cdadr fibs))] ,@fibs))))
+
+(begin-template '#,(map cdr (sort (hash->list the-fibs) < #:key car)))
+
+; '(0 1 1 2 3 5 8 13 21 34)
+
+(begin-template
+  (define fib (match-lambda (for/template ([K (in-range 10)])
+                              [K #,(hash-ref the-fibs K)]))))
+
+(fib 8)
+
+; 21
+
+(fib 10)
+
+; match-lambda: no matching clause for 10
+; /tmp/f.rkt:15:14
+; Context:
+;  /usr/share/racket/collects/racket/match/runtime.rkt:24:0 match:error
+;  "/tmp/f.rkt":1:1 [running body]
+; [Due to errors, REPL is just module language, requires, and stub definitions]
 ```
 
 ## Installation and Use
@@ -57,9 +66,8 @@ To start using template macros, import the `template` collection.
 ```
 
 See the [official documentation](https://docs.racket-lang.org/template/) for a
-detailed overview of template macros, along with the complete catalog of
-template constructors and combinators provided by the
-[template](https://pkgs.racket-lang.org/package/template) package.
+detailed overview of template macros, along with a catalog of template
+constructors, combiners, and definers.
 
 ## Contributing
 
