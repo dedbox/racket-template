@@ -268,7 +268,7 @@
 
 (define-for-syntax (resolve-with vars args tpls)
   (parameterize ([current-vars (append vars (current-vars))]
-                 [current-args (append args (current-args))]
+                 [current-args (append (map resolve-one args) (current-args))]
                  [current-resolvers (cons resolve-template (current-resolvers))]
                  [keep-template-scopes? #t]
                  [resolve-inside-syntax? #t]
@@ -277,7 +277,7 @@
 
 (define-for-syntax (resolve-semiwith vars args tpls)
   (parameterize ([current-vars (append vars (current-vars))]
-                 [current-args (append args (current-args))]
+                 [current-args (append (map resolve-one args) (current-args))]
                  [current-resolvers (cons resolve-template (current-resolvers))]
                  [keep-template-scopes? #f]
                  [resolve-inside-syntax? #t]
@@ -286,7 +286,7 @@
 
 (define-for-syntax (resolve-quote vars args tpls)
   (parameterize ([current-vars (append vars (current-vars))]
-                 [current-args (append args (current-args))]
+                 [current-args (append (map resolve-one args) (current-args))]
                  [current-resolvers (cons resolve-quote-template (current-resolvers))]
                  [keep-template-scopes? #f]
                  [resolve-inside-syntax? #f]
@@ -295,7 +295,7 @@
 
 (define-for-syntax (resolve-semiquote vars args tpls)
   (parameterize ([current-vars (append vars (current-vars))]
-                 [current-args (append args (current-args))]
+                 [current-args (append (map resolve-one args) (current-args))]
                  [current-resolvers (cons resolve-quote-template (current-resolvers))]
                  [keep-template-scopes? #t]
                  [resolve-inside-syntax? #f]
@@ -377,12 +377,12 @@
   (syntax-parser
     #:literals (syntax quasisyntax unsyntax unsyntax-splicing)
     #:literal-sets (template-forms)
-    [     (syntax tpl) (list      (resolve-syntax-object (attribute tpl)))]
-    [(quasisyntax tpl) (list (resolve-quasisyntax-object (attribute tpl)))]
-    [   (unsyntax tpl) (list (resolve-untemplate         (attribute tpl)))]
-    [  (unsyntax-splicing tpl)       (resolve-untemplate-splicing (attribute tpl))]
-    [(untemplate-splicing tpl)       (resolve-untemplate-splicing (attribute tpl))]
+    [     (syntax tpl) (list      (resolve-syntax-object  (attribute tpl)))]
+    [(quasisyntax tpl) (list (resolve-quasisyntax-object  (attribute tpl)))]
+    [   (unsyntax tpl) (list (resolve-untemplate          (attribute tpl)))]
+    [(unsyntax-splicing tpl) (resolve-untemplate-splicing (attribute tpl))]
     [(untemplate          tpl) (list (resolve-untemplate          (attribute tpl)))]
+    [(untemplate-splicing tpl)       (resolve-untemplate-splicing (attribute tpl))]
     [(with-template ([var:id arg] ...) tpl ...)
      (resolve-with (attribute var) (attribute arg) (attribute tpl))]
     [(semiwith-template ([var:id arg] ...) tpl ...)
@@ -467,7 +467,7 @@
 (define-for-syntax current-vars (make-parameter null))
 (define-for-syntax current-args (make-parameter null))
 (define-for-syntax current-comps (make-parameter null))
-(define-for-syntax current-resolvers (make-parameter (list resolve-template)))
+(define-for-syntax current-resolvers (make-parameter (build-list 2 (λ _ resolve-template))))
 (define-for-syntax keep-template-scopes? (make-parameter #t))
 (define-for-syntax resolve-inside-syntax? (make-parameter #t))
 (define-for-syntax resolve-outside-syntax? (make-parameter #t))
