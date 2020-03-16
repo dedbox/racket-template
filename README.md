@@ -9,7 +9,7 @@
 
 Template macros combine the flexibility of [template
 meta-programming](https://en.wikipedia.org/wiki/Template_metaprogramming) with
-the safety of Racket's hygienic macro system.
+the safety of Racket's hygienic macro sub-system.
 
 Template variables are resolved *before* expansion by selectively rewriting
 the input text. The extra flexibility makes escaping to the expanding
@@ -27,7 +27,6 @@ environment less necessary *and* more convenient.
      `([,k . ,(+ (cdar fibs) (cdadr fibs))] ,@fibs))))
 
 (begin-template '#,(map cdr (sort (hash->list the-fibs) < #:key car)))
-
 ; '(0 1 1 2 3 5 8 13 21 34)
 
 (begin-template
@@ -35,17 +34,10 @@ environment less necessary *and* more convenient.
                               [K #,(hash-ref the-fibs K)]))))
 
 (fib 8)
-
 ; 21
 
 (fib 10)
-
 ; match-lambda: no matching clause for 10
-; /tmp/f.rkt:15:14
-; Context:
-;  /usr/share/racket/collects/racket/match/runtime.rkt:24:0 match:error
-;  "/tmp/f.rkt":1:1 [running body]
-; [Due to errors, REPL is just module language, requires, and stub definitions]
 ```
 
 ## Installation and Use
