@@ -383,6 +383,7 @@
     [(unsyntax-splicing tpl) (resolve-untemplate-splicing (attribute tpl))]
     [(untemplate          tpl) (list (resolve-untemplate          (attribute tpl)))]
     [(untemplate-splicing tpl)       (resolve-untemplate-splicing (attribute tpl))]
+    [(begin-template tpl ...) (resolve-with null null (attribute tpl))]
     [(with-template ([var:id arg] ...) tpl ...)
      (resolve-with (attribute var) (attribute arg) (attribute tpl))]
     [(semiwith-template ([var:id arg] ...) tpl ...)
@@ -425,6 +426,7 @@
     #:literal-sets (template-forms)
     [(untemplate          tpl)    (maybe (list (resolve-untemplate (attribute tpl))))]
     [(untemplate-splicing tpl) (maybe (resolve-untemplate-splicing (attribute tpl)))]
+    [(begin-template tpl ...) (maybe (resolve-with null null (attribute tpl)))]
     [(with-template ([var:id arg] ...) tpl ...)
      (maybe (resolve-with (attribute var) (attribute arg) (attribute tpl)))]
     [(semiwith-template ([var:id arg] ...) tpl ...)
