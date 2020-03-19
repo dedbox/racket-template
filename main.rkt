@@ -331,13 +331,13 @@
                    [resolve-inside-syntax? #f]
                    [resolve-outside-syntax? #f])
       (resolve-many tpls)))
-  (flatten
-   (for/list ([args (in-list args-list)])
-     (parameterize ([current-vars (append vars (current-vars))]
-                    [current-args (append (map rescope args) (current-args))]
-                    [current-comps (append vars (current-comps))]
-                    [keep-template-scopes? #t])
-       (resolve-many tpls*)))))
+  (parameterize ([current-vars (append vars (current-vars))]
+                 [current-comps (append vars (current-comps))]
+                 [keep-template-scopes? #t])
+    (flatten
+     (for/list ([args (in-list args-list)])
+       (parameterize ([current-args (append (map rescope args) (current-args))])
+         (resolve-many tpls*))))))
 
 (define-for-syntax (null-voided head stxs)
   (cond [(null? stxs) #'(void)]
