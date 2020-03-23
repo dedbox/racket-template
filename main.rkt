@@ -527,12 +527,25 @@
 
 (define-for-syntax (resolve-literal stx)
   (define str (syntax->string stx))
-  (if (has-template-vars? str)
-      (if (or (keep-template-scopes?)
-              (is-comp? (has-template-vars? str)))
-          (string->syntax stx (resolve-vars str))
-          (string->syntax (var-arg str) (resolve-vars str)))
+  (define x0 (has-template-vars? str))
+  (define str*
+    (and x0 (let ([str* (resolve-vars str)])
+              (cond [(string=? str* "") "||"]
+                    [(and (identifier-string? str*) (string-contains? str* " "))
+                     (format "|~a|" str*)]
+                    [else str*]))))
+  (if str*
+      (if (or (keep-template-scopes?) (is-comp? x0))
+          (string->syntax stx str*)
+          (string->syntax (var-arg str) str*))
       stx))
+
+(define-for-syntax (identifier-string? str)
+  (or (char=? (string-ref str 0) #\|)
+      (not (or (char=? (string-ref str 0) #\")
+               (char=? (string-ref str 0) #\()
+               (and (char=? (string-ref str 0) #\#)
+                    (not (char=? (string-ref str 1) #\%)))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Template Variables

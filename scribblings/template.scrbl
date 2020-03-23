@@ -159,11 +159,11 @@ Examples:
 
   Example:
   @example[
-(semiwith-template ([$where 'here]) #'$where)
+(semiwith-template ([$where here]) #'$where)
   ]
 
   @example[
-(with-template ([$where 'not-here]) #'$where)
+(with-template ([$where not-here]) #'$where)
   ]
 }
 
@@ -173,11 +173,11 @@ Examples:
 
   Example:
   @example[
-(quote-template ([$where 'not-here]) #'(untemplate $where))
+(quote-template ([$where not-here]) #'(untemplate '$where))
   ]
 
   @example[
-(semiwith-template ([$where 'there]) #'(untemplate $where))
+(semiwith-template ([$where there]) #'(untemplate '$where))
   ]
 }
 
@@ -190,11 +190,11 @@ Examples:
 
   Example:
   @example[
-(semiquote-template ([$where 'not-here]) #'(untemplate $where))
+(semiquote-template ([$where not-here]) #'(untemplate '$where))
   ]
 
   @example[
-(quote-template ([$where 'not-here]) #'(untemplate $where))
+(quote-template ([$where not-here]) #'(untemplate '$where))
   ]
 }
 
@@ -462,11 +462,9 @@ Examples:
   Example:
   @example[
 (define-templates
-  [(print-one $obj) (displayln "$obj")]
-  [(print-many $objs)
-   (for/template ([$obj (in-syntax #'$objs)])
-     (print-one $obj))])
-(print-many (one two three))
+  [(one $obj) (displayln "$obj")]
+  [(many $objs) (for/template ([$obj '$objs]) (one $obj))])
+(many (one two three))
   ]
 }
 
