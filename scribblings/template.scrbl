@@ -462,8 +462,8 @@ Examples:
   Example:
   @example[
 (define-templates
-  [(one $obj) (displayln "$obj")]
-  [(many $objs) (for/template ([$obj '$objs]) (one $obj))])
+  [(show $obj) (displayln "$obj")]
+  [(many $objs) (for/template ([$obj '$objs]) (show $obj))])
 (many (one two three))
   ]
 }
@@ -476,9 +476,9 @@ Examples:
 
   Example:
   @example[
-(let-template ([(fwd $x $y) '$x$y]
-               [(rev $x $y) '$y$x])
-  (list (fwd a b) (rev a b)))
+(let-template ([(fwd $x $y) $x$y]
+               [(rev $x $y) $y$x])
+  '((fwd a b) (rev a b)))
   ]
 }
 
@@ -490,9 +490,9 @@ Examples:
   Example:
   @EXAMPLE[
 (letrec-template
-    ([(is-even? $n) (if-template (zero? $n) #t (is-odd? #,(sub1 $n)))]
-     [(is-odd? $n) (not (is-even? $n))])
-  (list (is-even? 10) (is-even? 11)))
+    ([(E? $n) (if-template (zero? $n) #t (O? #,(sub1 $n)))]
+     [(O? $n) #,(not (E? $n))])
+  '((E? 10) (E? 11)))
   ]
 }
 
@@ -515,10 +515,10 @@ o
 
   @EXAMPLE[
 (splicing-letrec-template
-    ([(is-even? $n) (if-template (zero? $n) #t (is-odd? #,(sub1 $n)))]
-     [(is-odd? $n) (not (is-even? $n))])
-  (define is-11-even? (is-even? 11))
-  (define is-10-even? (is-even? 10)))
+    ([(E? $n) (if-template (zero? $n) #t (O? #,(sub1 $n)))]
+     [(O? $n) #,(not (E? $n))])
+  (define is-11-even? (E? 11))
+  (define is-10-even? (E? 10)))
 (list is-11-even? is-10-even?)
   ]
 }

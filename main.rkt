@@ -44,15 +44,22 @@
 ;;; Binding Forms
 
 (begin-for-syntax
+  (struct template (impl)
+    #:transparent
+    #:name _template
+    #:constructor-name make-template
+    #:property prop:procedure 0)
+
   (define-simple-macro (templates [(var:id ...) tpl ...] ...)
-    (syntax-parser
-      [(_ arg (... ...))
-       #:when (= (length (attribute arg))
-                 (length (syntax->list #'(var ...))))
-       #:with (var* (... ...)) (map syntax-local-introduce (syntax->list #'(var ...)))
-       #:with (tpl* (... ...)) (map syntax-local-introduce (syntax->list #'(tpl ...)))
-       #'(with-template ([var* arg] (... ...)) (begin-template tpl* (... ...)))]
-      ...))
+    (make-template
+     (syntax-parser
+       [(_ arg (... ...))
+        #:when (= (length (attribute arg))
+                  (length (syntax->list #'(var ...))))
+        #:with (var* (... ...)) (map syntax-local-introduce (syntax->list #'(var ...)))
+        #:with (tpl* (... ...)) (map syntax-local-introduce (syntax->list #'(tpl ...)))
+        #'(with-template ([var* arg] (... ...)) (begin-template tpl* (... ...)))]
+       ...)))
 
   (define-simple-macro (template (var:id ...) tpl ...)
     (templates [(var ...) tpl ...])))
@@ -106,10 +113,10 @@
   (begin (define-template (name var ...) tpl ...) ...))
 
 (define-simple-macro (let-template ([(name:id var:id ...) tpl ...] ...) body ...)
-  (let-syntax ([name (template (var ...) tpl ...)] ...) body ...))
+  (let-syntax ([name (template (var ...) tpl ...)] ...) (begin-template body ...)))
 
 (define-simple-macro (letrec-template ([(name:id var:id ...) tpl ...] ...) body ...)
-  (letrec-syntax ([name (template (var ...) tpl ...)] ...) body ...))
+  (letrec-syntax ([name (template (var ...) tpl ...)] ...) (begin-template body ...)))
 
 (define-simple-macro (splicing-let-template ([(name:id var:id ...) tpl ...] ...) body ...)
   (splicing-let-syntax ([name (template (var ...) tpl ...)] ...) body ...))
@@ -260,7 +267,19 @@
   (map (curry resyntax stx) (flatten results)))
 
 (define-for-syntax (resolve-app stx)
-  (resyntax stx (resolve-many (syntax-e stx))))
+  (define stx* (syntax-e stx))
+  (define tpl (and (pair? stx*)
+                   (identifier? (car stx*))
+                   (syntax-local-value (car stx*) (λ _ #f))))
+  (if (template? tpl)
+      (let ([results (resolve (tpl stx))])
+        (if (and (pair? results) (null? (cdr results)))
+            (syntax-parse (car results)
+              [((~literal void)) null]
+              [((~literal begin) t ...) (attribute t)]
+              [_ results])
+            results))
+      (list (resyntax stx (resolve-many stx*)))))
 
 (define-for-syntax (resolve-pair stx)
   (define stxs (syntax-e stx))
@@ -371,7 +390,7 @@
 
   (define-simple-macro (maybe expr)
     #:with this-syntax (datum->syntax this-syntax 'this-syntax)
-    (either expr (list (resolve-app this-syntax)))))
+    (either expr (resolve-app this-syntax))))
 
 (define-for-syntax resolve-template
   (syntax-parser
@@ -457,7 +476,7 @@
 (define-for-syntax resolve-quote-template
   (syntax-parser
     #:literal-sets (template-forms)
-    [(_ ...)   (list (resolve-app     this-syntax))]
+    [(_ ...) (resolve-app this-syntax)]
     [(_ . _)   (list (resolve-pair    this-syntax))]
     [:vector-t (list (resolve-vector  this-syntax))]
     [:box-t    (list (resolve-box     this-syntax))]
