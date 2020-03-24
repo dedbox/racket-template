@@ -68,19 +68,6 @@ with four important differences:
 (with-template ([$x 3] [$y 2]) (add1 $x$y0))
   ]}
 
-  @item{Templates can escape to the expanding environment, even when they
-  appear @emph{outside} of a @rtech{syntax transformer}.
-
-  @example[
-(begin-template '(#,@(list #'hello #'world)))
-  ]}
-
-  @item{Most templates become splicing forms when used inside other templates.
-
-  @example[
-(begin-template (list (for/template ([$k 10]) (add1 $k))))
-  ]}
-
   @item{Template variables are @emph{always} in scope, regardless of
   position, quoting depth, or escape level.
 
@@ -88,6 +75,19 @@ with four important differences:
 (begin-template '((for/template ([$a 3]) #'"$a")))
   ]
   }
+
+  @item{Most templates become splicing forms when used inside other templates.
+
+  @example[
+(begin-template (list (for/template ([$k 10]) (add1 $k))))
+  ]}
+
+  @item{Templates can escape to the expanding environment, even when they
+  appear @emph{outside} of a @rtech{syntax transformer}.
+
+  @example[
+(begin-template '(#,@(list #'hello #'world)))
+  ]}
 
 ]
 
