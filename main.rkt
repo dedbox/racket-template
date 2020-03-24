@@ -267,23 +267,30 @@
   (map (curry resyntax stx) (flatten results)))
 
 (define-for-syntax (resolve-app stx)
-  (define stx* (syntax-e stx))
-  (define tpl (and (pair? stx*)
-                   (identifier? (car stx*))
-                   (syntax-local-value (car stx*) (λ _ #f))))
-  (if (template? tpl)
-      (let ([results (resolve (tpl stx))])
-        (if (and (pair? results) (null? (cdr results)))
-            (syntax-parse (car results)
-              [((~literal void)) null]
-              [((~literal begin) t ...) (attribute t)]
-              [_ results])
-            results))
-      (list (resyntax stx (resolve-many stx*)))))
+  (define stxs (syntax->list stx))
+  (let* ([head (resolve (car stxs))]
+         [tpl (and (pair? head)
+                   (identifier? (car head))
+                   (syntax-local-value (car head) (λ _ #f)))])
+    (if (template? tpl)
+        (let ([results (resolve (tpl stx))])
+          (if (and (pair? results) (null? (cdr results)))
+              (syntax-parse (car results)
+                [((~literal void)) null]
+                [((~literal begin) t ...) (attribute t)]
+                [_ results])
+              results))
+        (list (resyntax stx (append head (resolve-many (cdr stxs))))))))
 
 (define-for-syntax (resolve-pair stx)
   (define stxs (syntax-e stx))
-  (list (resyntax stx (cons (resolve-one (car stxs)) (resolve-one (cdr stxs))))))
+  (define head (resolve-one (car stxs)))
+  (define tail
+    (cond [(pair? (cdr stxs)) (car (resolve-pair (resyntax stx (cdr stxs))))]
+          [(syntax? (cdr stxs)) (resolve-one (cdr stxs))]
+          [else (error 'impossible)]))
+  (define tail* (if ((disjoin pair? null?) (syntax-e tail)) (syntax-e tail) tail))
+  (list (resyntax stx (cons head tail*))))
 
 (define-for-syntax (resolve-with vars args tpls)
   (parameterize ([current-vars (append vars (current-vars))]
@@ -476,6 +483,7 @@
 (define-for-syntax resolve-quote-template
   (syntax-parser
     #:literal-sets (template-forms)
+    [() (list this-syntax)]
     [(_ ...) (resolve-app this-syntax)]
     [(_ . _)   (list (resolve-pair    this-syntax))]
     [:vector-t (list (resolve-vector  this-syntax))]
