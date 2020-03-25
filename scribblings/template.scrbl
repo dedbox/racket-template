@@ -539,13 +539,13 @@ In @racketcommentfont{template/tests/lang-template.rkt}:
                 (loop (cdr lines)))))))])
    (go))
 
-@defform[(load-template id mod-path)]{
+@defform[(load-template mod-path id)]{
 
   Binds @var[id] to the @tech{template macro} provided by @var[mod-path].
 
   Example:
   @example[
-(load-template tpl template/scribblings/lang-template)
+(load-template template/scribblings/lang-template tpl)
 (tpl a 4)
 as
 a4

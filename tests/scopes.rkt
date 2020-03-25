@@ -149,7 +149,7 @@
 
   (define-test-suite modules
     (test-case ""
-      (load-template tpl 'my-module-template)
+      (load-template 'my-module-template tpl)
       (check free-identifier=? (tpl M) #'M)))
 
   ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

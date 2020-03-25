@@ -38,7 +38,7 @@
     (check = b4 4) (check = b5 5))
 
   (test-case "load-template"
-    (load-template tpl template/scribblings/lang-template)
+    (load-template template/scribblings/lang-template tpl)
     (tpl c 6)
     (check equal? cs '(c c c c c c))
     (check = c1 1) (check = c2 2) (check = c3 3)

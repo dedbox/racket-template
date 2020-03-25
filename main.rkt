@@ -647,7 +647,7 @@
         (with-syntax ([(var* (... ...)) ((rescope stx) #'(var ...))])
           #'(semiwith-template ([var* arg] (... ...)) tpl* ...))]))))
 
-(define-simple-macro (load-template name:id mod-path)
+(define-simple-macro (load-template mod-path name:id)
   #:with the-template (datum->syntax this-syntax 'the-template)
   (local-require (rename-in mod-path [the-template name])))
 
