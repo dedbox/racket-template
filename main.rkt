@@ -35,8 +35,9 @@
          letrec-template splicing-let-template splicing-letrec-template with-template
          semiwith-template quote-template semiquote-template begin-template
          begin0-template if-template cond-template when-template unless-template
-         for/template for*/template template-module-begin load-template debug-template
-         debug-template/scopes reset-debug-scopes
+         for/template for*/template template-module-begin load-template
+         require-template require-templates debug-template debug-template/scopes
+         reset-debug-scopes
          (for-syntax templates template semitemplates semitemplate quoted-templates
                      quoted-template semiquoted-templates semiquoted-template))
 
@@ -650,6 +651,14 @@
 (define-simple-macro (load-template mod-path name:id)
   #:with the-template (datum->syntax this-syntax 'the-template)
   (local-require (rename-in mod-path [the-template name])))
+
+(define-simple-macro (require-template mod-path name:id)
+  #:with the-template (datum->syntax this-syntax 'the-template)
+  (require (rename-in mod-path [the-template name])))
+
+(define-simple-macro (require-templates [mod-path name:id] ...)
+  #:with the-template (datum->syntax this-syntax 'the-template)
+  (require (rename-in mod-path [the-template name]) ...))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; #lang template
